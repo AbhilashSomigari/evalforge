@@ -31,6 +31,24 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+class _StderrProxy:
+    """Resolves sys.stderr on every write instead of capturing it once.
+
+    logging.StreamHandler(sys.stderr) would bind whatever sys.stderr *is at
+    construction time*. configure_logging() is meant to be called once and
+    then left alone, but anything that later swaps sys.stderr for a new
+    object - typer's CliRunner does this between every invoke(), and so does
+    ordinary output redirection - would leave the handler writing to a stale,
+    possibly-closed stream. Binding through this instead keeps it live.
+    """
+
+    def write(self, message: str) -> int:
+        return sys.stderr.write(message)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     """Idempotent: safe to call from every entrypoint (CLI commands, API startup)."""
     root = logging.getLogger(_ROOT_NAME)
@@ -39,7 +57,7 @@ def configure_logging(level: int = logging.INFO) -> None:
         return
     # stderr, not stdout: keeps structured logs out of the CLI's rich tables and
     # out of run artifacts piped/redirected from stdout.
-    handler = logging.StreamHandler(sys.stderr)
+    handler = logging.StreamHandler(_StderrProxy())
     handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
     root.setLevel(level)

@@ -133,7 +133,24 @@ tasks:
         pass_threshold: 1.0
 ```
 
-For a regression gate, provide `--baseline runs/main.json`. A quality metric with `op: ">="` is allowed to drop by at most `max_regression`; a cost/latency metric with `op: "<="` is allowed to rise by at most that amount.
+For a regression gate, provide a baseline. A quality metric with `op: ">="` is allowed to drop by at most `max_regression`; a cost/latency metric with `op: "<="` is allowed to rise by at most that amount.
+
+```bash
+evalforge run --suite examples/suites/customer_support.yaml --agent "..." \
+  --out runs/pr-184.json --baseline-branch main
+```
+
+`--baseline-branch main` auto-resolves the baseline to the latest run of this
+suite on that branch — no more hand-tracking `runs/main.json` yourself. It
+looks in Postgres if `EVALFORGE_DATABASE_URL` is set, otherwise in `--out`'s
+directory. `GITHUB_HEAD_REF`/`GITHUB_REF_NAME` set this automatically in
+GitHub Actions; set `GIT_BRANCH` yourself elsewhere. Use `--baseline
+<path>` instead for a fixed file, same as before — the two are mutually
+exclusive. Either way, if the baseline came from a suite definition that's
+since changed (a task, grader, or gate edited — not just its `description`
+or `concurrency`), you'll get a warning that the comparison may not be
+meaningful, since `evalforge` tracks a content hash (`suite_version`) of
+every run's suite on the `EvalRun` itself.
 
 ## Replay a trajectory
 
@@ -254,7 +271,7 @@ The implementation is OpenAI-compatible so it can also point to compatible gatew
 
 ## What comes next
 
-The next platform milestones are: distributed workers; dataset/version registry; human review queues; richer LLM/NLI groundedness graders; environment snapshots and state-based outcome grading; provider-native OpenAI/Anthropic adapters; statistical confidence intervals; flaky-eval detection; prompt/model matrix experiments; GitHub PR annotations; and an observability UI built on the same run schema.
+The next platform milestones are: distributed workers; human review queues; richer LLM/NLI groundedness graders; environment snapshots and state-based outcome grading; provider-native OpenAI/Anthropic adapters; statistical confidence intervals; flaky-eval detection; prompt/model matrix experiments; GitHub PR annotations; and an observability UI built on the same run schema.
 
 ## Design principle
 

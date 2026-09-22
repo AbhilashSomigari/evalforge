@@ -17,12 +17,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _run(suite_name: str = "s", task_success: float = 1.0) -> EvalRun:
+def _run(suite_name: str = "s", task_success: float = 1.0, **overrides) -> EvalRun:
     return EvalRun(
         suite_name=suite_name,
         agent_name="a",
         results=[],
         summary=RunSummary(task_success=task_success),
+        **overrides,
     )
 
 
@@ -73,6 +74,46 @@ def test_list_runs_filters_by_suite_name():
     rows = db.list_runs(limit=10, offset=0, suite_name="alpha")
     assert len(rows) == 1
     assert rows[0]["suite"] == "alpha"
+
+
+def test_latest_run_returns_most_recent_on_branch():
+    db.insert_run(_run(suite_name="s", git_branch="main"))
+    newest = _run(suite_name="s", git_branch="main")
+    db.insert_run(newest)
+    db.insert_run(_run(suite_name="s", git_branch="feature-x"))
+    found = db.latest_run("s", "main")
+    assert found is not None
+    assert found.id == newest.id
+
+
+def test_latest_run_returns_none_when_no_match():
+    assert db.latest_run("no-such-suite", "main") is None
+
+
+def test_ensure_schema_migrates_a_pre_existing_table_without_new_columns():
+    # Simulates a database that already had the Phase 2 schema (no git_branch/
+    # suite_version columns) before this feature existed - CREATE TABLE IF NOT
+    # EXISTS alone wouldn't add them, which is exactly the bug the ALTER TABLE
+    # ADD COLUMN IF NOT EXISTS migration in ensure_schema() exists to avoid.
+    with db._connect() as conn:
+        conn.execute("DROP TABLE IF EXISTS runs")
+        conn.execute(
+            """
+            CREATE TABLE runs (
+                id TEXT PRIMARY KEY,
+                schema_version INTEGER NOT NULL,
+                suite_name TEXT NOT NULL,
+                agent_name TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                task_success DOUBLE PRECISION NOT NULL,
+                data JSONB NOT NULL
+            )
+            """
+        )
+    db.ensure_schema()
+    run = _run(suite_name="s", git_branch="main")
+    db.insert_run(run)
+    assert db.latest_run("s", "main").id == run.id
 
 
 def test_api_uses_db_backend_when_enabled(monkeypatch):

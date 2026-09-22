@@ -9,3 +9,4 @@ __pycache__/
 runs/*.json
 !runs/.gitkeep
 .DS_Store
+CLAUDE.md

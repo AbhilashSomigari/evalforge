@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
@@ -89,6 +91,21 @@ class SuiteSpec(BaseModel):
     tasks: list[TaskSpec]
 
 
+def compute_suite_version(spec: SuiteSpec) -> str:
+    """Content hash identifying what this suite actually tests.
+
+    Excludes `description` (cosmetic) and `concurrency` (a performance knob,
+    not part of what's being tested), so editing either doesn't spuriously
+    invalidate baseline comparability. Used to warn when a candidate run is
+    compared against a baseline produced by a materially different suite.
+    """
+    data = spec.model_dump(mode="json")
+    data.pop("description", None)
+    data.pop("concurrency", None)
+    canonical = json.dumps(data, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()[:12]
+
+
 class GradeResult(BaseModel):
     grader: str
     score: float
@@ -132,6 +149,10 @@ class EvalRun(BaseModel):
     suite_name: str
     created_at: datetime = Field(default_factory=utc_now)
     git_sha: str | None = None
+    git_branch: str | None = None
+    # "" (not "" | None) for old run files predating this field, and for tests
+    # that build EvalRun by hand: absent means "unknown", not "no suite".
+    suite_version: str = ""
     agent_name: str
     results: list[TrialResult]
     summary: RunSummary

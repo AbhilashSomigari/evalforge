@@ -142,6 +142,8 @@ def list_runs(
                 "suite": run.suite_name,
                 "agent": run.agent_name,
                 "created_at": run.created_at,
+                "git_branch": run.git_branch,
+                "suite_version": run.suite_version,
                 "summary": run.summary.model_dump(),
             }
         )

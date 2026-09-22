@@ -9,7 +9,15 @@ from statistics import mean
 from evalforge.adapters.base import AgentAdapter
 from evalforge.graders import run_grader
 from evalforge.logging_utils import get_logger, log
-from evalforge.models import EvalRun, GradeResult, RunSummary, SuiteSpec, TaskSpec, TrialResult
+from evalforge.models import (
+    EvalRun,
+    GradeResult,
+    RunSummary,
+    SuiteSpec,
+    TaskSpec,
+    TrialResult,
+    compute_suite_version,
+)
 
 logger = get_logger(__name__)
 
@@ -91,6 +99,10 @@ class EvalRunner:
         return EvalRun(
             suite_name=self.suite.name,
             git_sha=os.getenv("GITHUB_SHA") or os.getenv("GIT_COMMIT"),
+            # GITHUB_HEAD_REF is set on pull_request events, GITHUB_REF_NAME on push -
+            # check both so branch-based baseline lookup works on either CI trigger.
+            git_branch=os.getenv("GITHUB_HEAD_REF") or os.getenv("GITHUB_REF_NAME") or os.getenv("GIT_BRANCH"),
+            suite_version=compute_suite_version(self.suite),
             agent_name=self.agent.name,
             results=results,
             summary=summary,

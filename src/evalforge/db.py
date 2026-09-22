@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS runs (
     data JSONB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS runs_suite_name_created_at_idx ON runs (suite_name, created_at DESC);
+-- Added for baseline-branch lookup: CREATE TABLE IF NOT EXISTS above won't add
+-- these to a table that already existed before this feature, so migrate explicitly.
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS git_branch TEXT;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS suite_version TEXT;
+CREATE INDEX IF NOT EXISTS runs_suite_branch_idx ON runs (suite_name, git_branch, created_at DESC);
 """
 
 
@@ -48,12 +53,16 @@ def insert_run(run: EvalRun) -> None:
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO runs (id, schema_version, suite_name, agent_name, created_at, task_success, data)
+            INSERT INTO runs (id, schema_version, suite_name, agent_name, created_at,
+                               task_success, git_branch, suite_version, data)
             VALUES (%(id)s, %(schema_version)s, %(suite_name)s, %(agent_name)s,
-                    %(created_at)s, %(task_success)s, %(data)s::jsonb)
+                    %(created_at)s, %(task_success)s, %(git_branch)s, %(suite_version)s,
+                    %(data)s::jsonb)
             ON CONFLICT (id) DO UPDATE SET
                 data = EXCLUDED.data,
-                task_success = EXCLUDED.task_success
+                task_success = EXCLUDED.task_success,
+                git_branch = EXCLUDED.git_branch,
+                suite_version = EXCLUDED.suite_version
             """,
             {
                 "id": run.id,
@@ -62,6 +71,8 @@ def insert_run(run: EvalRun) -> None:
                 "agent_name": run.agent_name,
                 "created_at": run.created_at,
                 "task_success": run.summary.task_success,
+                "git_branch": run.git_branch,
+                "suite_version": run.suite_version,
                 "data": run.model_dump_json(),
             },
         )
@@ -75,8 +86,25 @@ def fetch_run(run_id: str) -> EvalRun | None:
     return EvalRun.model_validate(row[0])
 
 
+def latest_run(suite_name: str, git_branch: str) -> EvalRun | None:
+    """The most recent run of `suite_name` on `git_branch` - the auto-resolved
+    baseline for `evalforge run --baseline-branch`."""
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT data FROM runs
+            WHERE suite_name = %s AND git_branch = %s
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (suite_name, git_branch),
+        ).fetchone()
+    if row is None:
+        return None
+    return EvalRun.model_validate(row[0])
+
+
 def list_runs(limit: int = 20, offset: int = 0, suite_name: str | None = None) -> list[dict[str, Any]]:
-    query = "SELECT id, suite_name, agent_name, created_at, data FROM runs"
+    query = "SELECT id, suite_name, agent_name, created_at, git_branch, suite_version, data FROM runs"
     params: list[Any] = []
     if suite_name:
         query += " WHERE suite_name = %s"
@@ -86,7 +114,7 @@ def list_runs(limit: int = 20, offset: int = 0, suite_name: str | None = None) -
     with _connect() as conn:
         rows = conn.execute(query, params).fetchall()
     results = []
-    for run_id, suite, agent, created_at, data in rows:
+    for run_id, suite, agent, created_at, git_branch, suite_version, data in rows:
         run = EvalRun.model_validate(data)
         results.append(
             {
@@ -94,6 +122,8 @@ def list_runs(limit: int = 20, offset: int = 0, suite_name: str | None = None) -
                 "suite": suite,
                 "agent": agent,
                 "created_at": created_at,
+                "git_branch": git_branch,
+                "suite_version": suite_version,
                 "summary": run.summary.model_dump(),
             }
         )

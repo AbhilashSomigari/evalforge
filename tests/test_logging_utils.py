@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import io
 import json
 import logging
+import sys
 
 import pytest
 
-from evalforge.logging_utils import JsonFormatter, get_logger, log, set_request_id
+from evalforge.logging_utils import JsonFormatter, configure_logging, get_logger, log, set_request_id
 
 
 @pytest.fixture(autouse=True)
@@ -85,3 +87,28 @@ def test_log_helper_attaches_extra_fields(caplog):
         log(logger, logging.INFO, "run started", suite="s1", tasks=3)
     assert len(caplog.records) == 1
     assert caplog.records[0].extra_fields == {"suite": "s1", "tasks": 3}
+
+
+def test_configure_logging_survives_stderr_being_replaced():
+    # Regression test: typer's CliRunner (and anything else that redirects
+    # output) replaces sys.stderr with a fresh object per invocation and
+    # closes the old one. configure_logging() only wires its handler once, so
+    # it must resolve sys.stderr dynamically on every write - not cache
+    # whatever sys.stderr was the first time - or every log call after the
+    # first swap raises "I/O operation on closed file".
+    original_stderr = sys.stderr
+    try:
+        first_stream = io.StringIO()
+        sys.stderr = first_stream
+        configure_logging()
+        logger = get_logger("swap-test")
+        logger.info("first")
+
+        first_stream.close()
+        second_stream = io.StringIO()
+        sys.stderr = second_stream
+        logger.info("second")  # must not raise, must not go to the closed stream
+
+        assert "second" in second_stream.getvalue()
+    finally:
+        sys.stderr = original_stderr
