@@ -210,6 +210,23 @@ pip install -e ".[postgres]"
 `docker-compose.yml` runs a Postgres container alongside the API and wires
 this automatically.
 
+### Securing the API
+
+The API is **open by default** — fine for `localhost`, not for anywhere else.
+Before exposing it beyond your own machine:
+
+```bash
+export EVALFORGE_API_KEY=some-long-random-value      # required Authorization: Bearer <key> on /runs*
+export EVALFORGE_CORS_ORIGINS=https://your-dashboard.example  # comma-separated allowlist; unset = no cross-origin reads
+export EVALFORGE_RATE_LIMIT_PER_MINUTE=60             # per-client-IP, in-memory (per process, not shared across replicas)
+```
+
+`/health` never requires the API key, so container/orchestrator health checks
+keep working unauthenticated. Every request gets an `X-Request-ID` (echoed
+back if the caller sends one), and the API and runner emit one JSON log line
+per request/run to stderr — `evalforge run` keeps its human-readable table on
+stdout, so scripts piping stdout are unaffected.
+
 ## LLM-as-judge
 
 Add this grader to a task or suite:

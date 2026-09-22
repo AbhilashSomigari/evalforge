@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from statistics import mean
 
 from evalforge.adapters.base import AgentAdapter
 from evalforge.graders import run_grader
+from evalforge.logging_utils import get_logger, log
 from evalforge.models import EvalRun, GradeResult, RunSummary, SuiteSpec, TaskSpec, TrialResult
+
+logger = get_logger(__name__)
 
 
 class EvalRunner:
@@ -40,6 +44,14 @@ class EvalRunner:
                 latency_ms = (time.perf_counter() - started) * 1000
                 from evalforge.models import AgentOutput
 
+                log(
+                    logger,
+                    logging.WARNING,
+                    "trial failed",
+                    task_id=task.id,
+                    trial_index=trial_index,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
                 return TrialResult(
                     task_id=task.id,
                     trial_index=trial_index,
@@ -51,6 +63,15 @@ class EvalRunner:
                 )
 
     async def run(self) -> EvalRun:
+        log(
+            logger,
+            logging.INFO,
+            "run started",
+            suite=self.suite.name,
+            agent=self.agent.name,
+            tasks=len(self.suite.tasks),
+            trials_per_task=self.suite.trials_per_task,
+        )
         jobs = [
             self._one(task, i)
             for task in self.suite.tasks
@@ -58,6 +79,15 @@ class EvalRunner:
         ]
         results = await asyncio.gather(*jobs)
         summary = summarize(results)
+        log(
+            logger,
+            logging.INFO,
+            "run completed",
+            suite=self.suite.name,
+            task_success=summary.task_success,
+            failed_trials=summary.failed_trials,
+            trials=summary.trials,
+        )
         return EvalRun(
             suite_name=self.suite.name,
             git_sha=os.getenv("GITHUB_SHA") or os.getenv("GIT_COMMIT"),

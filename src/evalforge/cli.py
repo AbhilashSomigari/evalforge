@@ -13,6 +13,7 @@ from evalforge import db
 from evalforge.adapters import CommandAgentAdapter, HttpAgentAdapter
 from evalforge.config import load_suite
 from evalforge.graders import run_grader
+from evalforge.logging_utils import configure_logging
 from evalforge.models import EvalRun, TrialResult
 from evalforge.regression import evaluate_gates
 from evalforge.runner import EvalRunner, summarize
@@ -33,6 +34,11 @@ def _persist(run: EvalRun) -> None:
 
 app = typer.Typer(help="EvalForge — CI/CD evaluation infrastructure for AI agents")
 console = Console()
+
+
+@app.callback()
+def _main() -> None:
+    configure_logging()
 
 
 def _print_summary(run: EvalRun) -> None:
