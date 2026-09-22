@@ -43,3 +43,9 @@ mypy_path = "src"
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+# psycopg is an optional extra (the "postgres" group); mypy runs in CI without
+# it installed, so its import must not be treated as a missing-stub error.
+module = "psycopg.*"
+ignore_missing_imports = true
