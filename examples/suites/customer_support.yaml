@@ -1,0 +1,72 @@
+name: customer-support-regression
+description: Regression suite for a tool-using support agent.
+trials_per_task: 2
+concurrency: 4
+
+graders:
+  - type: no_forbidden_claims
+    name: hallucination_guard
+    pass_threshold: 1.0
+    config:
+      phrases: ["guaranteed tomorrow", "I already contacted your bank"]
+
+gates:
+  - metric: task_success
+    op: ">="
+    value: 0.90
+  - metric: tool_correctness
+    op: ">="
+    value: 0.95
+  - metric: hallucination_rate
+    op: "<="
+    value: 0.05
+  - metric: avg_cost_usd
+    op: "<="
+    value: 0.02
+
+tasks:
+  - id: order-status
+    input: "Where is order A100?"
+    expected_tools: [lookup_order]
+    metadata:
+      order_id: A100
+      source_ids: [KB-ORDER-1]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+        pass_threshold: 1.0
+      - type: contains
+        name: answer_content
+        pass_threshold: 1.0
+        config:
+          values: ["delivered"]
+      - type: citation_groundedness
+        name: rag_groundedness
+        pass_threshold: 1.0
+
+  - id: refund
+    input: "Refund order R200 please."
+    expected_tools: [lookup_order, issue_refund]
+    metadata:
+      order_id: R200
+      source_ids: [KB-REFUND-1]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+        pass_threshold: 1.0
+      - type: tool_arguments
+        name: tool_arguments
+        pass_threshold: 1.0
+        config:
+          checks:
+            - tool: issue_refund
+              arguments:
+                order_id: R200
+      - type: contains
+        name: answer_content
+        pass_threshold: 1.0
+        config:
+          values: ["refund", "$49.99"]
+      - type: citation_groundedness
+        name: rag_groundedness
+        pass_threshold: 1.0

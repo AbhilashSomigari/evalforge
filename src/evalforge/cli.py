@@ -1,0 +1,174 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from evalforge.adapters import CommandAgentAdapter, HttpAgentAdapter
+from evalforge.config import load_suite
+from evalforge.graders import run_grader
+from evalforge.models import EvalRun, TrialResult
+from evalforge.regression import evaluate_gates
+from evalforge.runner import EvalRunner, summarize
+from evalforge.storage import load_run, save_run
+
+app = typer.Typer(help="EvalForge — CI/CD evaluation infrastructure for AI agents")
+console = Console()
+
+
+def _print_summary(run: EvalRun) -> None:
+    s = run.summary
+    table = Table(title=f"EvalForge · {run.suite_name}")
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    for name, value in [
+        ("Task success", f"{s.task_success:.1%}"),
+        ("Tool correctness", f"{s.tool_correctness:.1%}"),
+        ("Grader score", f"{s.grader_score:.1%}"),
+        ("Hallucination rate", f"{s.hallucination_rate:.1%}"),
+        ("Avg cost/task", f"${s.avg_cost_usd:.4f}"),
+        ("Avg latency", f"{s.avg_latency_ms:.0f} ms"),
+        ("Trials", str(s.trials)),
+    ]:
+        table.add_row(name, value)
+    console.print(table)
+
+
+@app.command()
+def run(
+    suite: Annotated[Path, typer.Option("--suite", "-s", exists=True, readable=True)],
+    agent: Annotated[str | None, typer.Option("--agent", help="Command that reads TaskSpec JSON from stdin")]=None,
+    url: Annotated[str | None, typer.Option("--url", help="HTTP agent endpoint")]=None,
+    out: Annotated[Path, typer.Option("--out", "-o")]=Path("runs/latest.json"),
+    baseline: Annotated[Path | None, typer.Option("--baseline", exists=True, readable=True)]=None,
+) -> None:
+    """Run an evaluation suite and enforce its CI gates."""
+    if bool(agent) == bool(url):
+        raise typer.BadParameter("Provide exactly one of --agent or --url")
+    spec = load_suite(suite)
+    adapter = CommandAgentAdapter(agent) if agent else HttpAgentAdapter(url)  # type: ignore[arg-type]
+    result = asyncio.run(EvalRunner(spec, adapter).run())
+    save_run(result, out)
+    _print_summary(result)
+    console.print(f"Saved run: [bold]{out}[/bold]")
+
+    if spec.gates:
+        base = load_run(baseline) if baseline else None
+        gates = evaluate_gates(result, spec.gates, base)
+        table = Table(title="CI gates")
+        table.add_column("Gate")
+        table.add_column("Actual", justify="right")
+        table.add_column("Threshold")
+        table.add_column("Result")
+        for g in gates:
+            table.add_row(g.metric, f"{g.actual:.4f}", g.threshold, "PASS" if g.passed else "FAIL")
+        console.print(table)
+        if not all(g.passed for g in gates):
+            raise typer.Exit(code=2)
+
+
+@app.command("ab")
+def ab_test(
+    suite: Annotated[Path, typer.Option("--suite", "-s", exists=True, readable=True)],
+    agent_a: Annotated[str, typer.Option("--agent-a")],
+    agent_b: Annotated[str, typer.Option("--agent-b")],
+    out_dir: Annotated[Path, typer.Option("--out-dir")]=Path("runs/ab"),
+) -> None:
+    """Run the same suite against two agent variants for prompt/model A/B testing."""
+    spec = load_suite(suite)
+
+    async def _run_both():
+        return await asyncio.gather(
+            EvalRunner(spec, CommandAgentAdapter(agent_a)).run(),
+            EvalRunner(spec, CommandAgentAdapter(agent_b)).run(),
+        )
+
+    a, b = asyncio.run(_run_both())
+    out_dir.mkdir(parents=True, exist_ok=True)
+    a_path, b_path = out_dir / "variant-a.json", out_dir / "variant-b.json"
+    save_run(a, a_path)
+    save_run(b, b_path)
+    console.print("[bold]Variant A[/bold]")
+    _print_summary(a)
+    console.print("[bold]Variant B[/bold]")
+    _print_summary(b)
+    table = Table(title="A/B deltas (B - A)")
+    table.add_column("Metric")
+    table.add_column("A", justify="right")
+    table.add_column("B", justify="right")
+    table.add_column("Delta", justify="right")
+    for field in a.summary.model_fields:
+        av, bv = getattr(a.summary, field), getattr(b.summary, field)
+        if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
+            table.add_row(field, f"{av:.4f}", f"{bv:.4f}", f"{bv-av:+.4f}")
+    console.print(table)
+    console.print(f"Saved A/B runs under [bold]{out_dir}[/bold]")
+
+
+@app.command()
+def compare(
+    baseline: Annotated[Path, typer.Option("--baseline", exists=True, readable=True)],
+    candidate: Annotated[Path, typer.Option("--candidate", exists=True, readable=True)],
+) -> None:
+    """Show metric deltas between two runs."""
+    a, b = load_run(baseline), load_run(candidate)
+    table = Table(title="EvalForge regression comparison")
+    table.add_column("Metric")
+    table.add_column("Baseline", justify="right")
+    table.add_column("Candidate", justify="right")
+    table.add_column("Delta", justify="right")
+    for field in a.summary.model_fields:
+        av = getattr(a.summary, field)
+        bv = getattr(b.summary, field)
+        if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
+            table.add_row(field, f"{av:.4f}", f"{bv:.4f}", f"{bv-av:+.4f}")
+    console.print(table)
+
+
+@app.command()
+def replay(
+    suite: Annotated[Path, typer.Option("--suite", "-s", exists=True, readable=True)],
+    run_file: Annotated[Path, typer.Option("--run", exists=True, readable=True)],
+    out: Annotated[Path, typer.Option("--out")]=Path("runs/replayed.json"),
+) -> None:
+    """Re-grade recorded outputs/trajectories without calling the agent again."""
+    spec = load_suite(suite)
+    old = load_run(run_file)
+    task_map = {t.id: t for t in spec.tasks}
+
+    async def _regrade() -> EvalRun:
+        rebuilt: list[TrialResult] = []
+        for row in old.results:
+            task = task_map[row.task_id]
+            specs = [*spec.graders, *task.graders]
+            grades = [await run_grader(task, row.output, g) for g in specs]
+            rebuilt.append(row.model_copy(update={"grades": grades, "success": all(g.passed for g in grades)}))
+        return old.model_copy(update={"results": rebuilt, "summary": summarize(rebuilt)})
+
+    new = asyncio.run(_regrade())
+    save_run(new, out)
+    _print_summary(new)
+    console.print(f"Saved replay: [bold]{out}[/bold]")
+
+
+@app.command()
+def inspect(run_file: Annotated[Path, typer.Argument(exists=True, readable=True)]) -> None:
+    """Print a compact JSON representation of one run."""
+    run = load_run(run_file)
+    console.print_json(json.dumps(run.model_dump(mode="json")))
+
+
+@app.command()
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Serve the lightweight run API."""
+    import uvicorn
+
+    uvicorn.run("evalforge.api:app", host=host, port=port, reload=False)

@@ -1,0 +1,36 @@
+name: EvalForge Agent Regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Unit tests
+        run: pytest
+      - name: Agent regression suite
+        run: |
+          evalforge run \
+            --suite examples/suites/customer_support.yaml \
+            --agent "python examples/agents/demo_agent.py" \
+            --out runs/ci.json
+      - name: Upload evaluation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalforge-run
+          path: runs/ci.json
