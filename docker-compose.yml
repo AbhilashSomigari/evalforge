@@ -5,3 +5,25 @@ services:
       - "8000:8000"
     volumes:
       - ./runs:/app/runs
+    environment:
+      EVALFORGE_DATABASE_URL: postgresql://evalforge:evalforge@db:5432/evalforge
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: evalforge
+      POSTGRES_PASSWORD: evalforge
+      POSTGRES_DB: evalforge
+    volumes:
+      - evalforge-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evalforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  evalforge-db:

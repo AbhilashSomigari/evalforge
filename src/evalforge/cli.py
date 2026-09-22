@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from evalforge import db
 from evalforge.adapters import CommandAgentAdapter, HttpAgentAdapter
 from evalforge.config import load_suite
 from evalforge.graders import run_grader
@@ -16,6 +17,19 @@ from evalforge.models import EvalRun, TrialResult
 from evalforge.regression import evaluate_gates
 from evalforge.runner import EvalRunner, summarize
 from evalforge.storage import load_run, save_run
+
+
+def _persist(run: EvalRun) -> None:
+    """Write a run to Postgres too when EVALFORGE_DATABASE_URL is configured.
+
+    The file written by save_run() stays the source of truth for local/CI use
+    (nothing about existing workflows changes); the database is additive,
+    durable, queryable storage for when many runs need to be compared or
+    listed without globbing a directory of JSON files.
+    """
+    if db.is_enabled():
+        db.ensure_schema()
+        db.insert_run(run)
 
 app = typer.Typer(help="EvalForge — CI/CD evaluation infrastructure for AI agents")
 console = Console()
@@ -61,6 +75,7 @@ def run(
     )
     result = asyncio.run(EvalRunner(spec, adapter).run())
     save_run(result, out)
+    _persist(result)
     _print_summary(result)
     console.print(f"Saved run: [bold]{out}[/bold]")
 
@@ -103,6 +118,8 @@ def ab_test(
     a_path, b_path = out_dir / "variant-a.json", out_dir / "variant-b.json"
     save_run(a, a_path)
     save_run(b, b_path)
+    _persist(a)
+    _persist(b)
     console.print("[bold]Variant A[/bold]")
     _print_summary(a)
     console.print("[bold]Variant B[/bold]")
@@ -162,6 +179,7 @@ def replay(
 
     new = asyncio.run(_regrade())
     save_run(new, out)
+    _persist(new)
     _print_summary(new)
     console.print(f"Saved replay: [bold]{out}[/bold]")
 

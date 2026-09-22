@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import evalforge.api as api_module
+from evalforge import db
 from evalforge.models import EvalRun, RunSummary
 from evalforge.storage import save_run
 
@@ -11,6 +12,9 @@ from evalforge.storage import save_run
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(api_module, "RUN_DIR", tmp_path)
+    # These tests exercise the file backend specifically; an ambient
+    # EVALFORGE_DATABASE_URL in the developer's shell must not change that.
+    monkeypatch.delenv(db.DATABASE_URL_ENV, raising=False)
     return TestClient(api_module.app)
 
 

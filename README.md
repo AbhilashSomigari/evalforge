@@ -189,11 +189,26 @@ Human scores can be imported without changing the run pipeline:
 ```bash
 evalforge serve --host 0.0.0.0 --port 8000
 # GET /health
-# GET /runs
-# GET /runs/{filename}
+# GET /runs?limit=20&offset=0&suite=customer-support-regression
+# GET /runs/{key}
 ```
 
 Interactive FastAPI docs are available at `/docs`.
+
+By default runs are read back from the local `runs/` directory (`{key}` is a
+filename). Set `EVALFORGE_DATABASE_URL` to persist runs to Postgres instead —
+`evalforge run`/`ab`/`replay` write to it in addition to the local JSON file,
+and `/runs`/`/runs/{key}` (`{key}` becomes the run id) query it directly with
+real pagination and suite filtering instead of parsing every file in `runs/`
+on every request:
+
+```bash
+export EVALFORGE_DATABASE_URL=postgresql://evalforge:evalforge@localhost:5432/evalforge
+pip install -e ".[postgres]"
+```
+
+`docker-compose.yml` runs a Postgres container alongside the API and wires
+this automatically.
 
 ## LLM-as-judge
 
@@ -222,7 +237,7 @@ The implementation is OpenAI-compatible so it can also point to compatible gatew
 
 ## What comes next
 
-The next platform milestones are: persistent Postgres run storage; distributed workers; dataset/version registry; human review queues; richer LLM/NLI groundedness graders; environment snapshots and state-based outcome grading; provider-native OpenAI/Anthropic adapters; statistical confidence intervals; flaky-eval detection; prompt/model matrix experiments; GitHub PR annotations; and an observability UI built on the same run schema.
+The next platform milestones are: distributed workers; dataset/version registry; human review queues; richer LLM/NLI groundedness graders; environment snapshots and state-based outcome grading; provider-native OpenAI/Anthropic adapters; statistical confidence intervals; flaky-eval detection; prompt/model matrix experiments; GitHub PR annotations; and an observability UI built on the same run schema.
 
 ## Design principle
 

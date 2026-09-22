@@ -36,3 +36,32 @@ jobs:
         with:
           name: evalforge-run
           path: runs/ci.json
+
+  db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: evalforge
+          POSTGRES_PASSWORD: evalforge
+          POSTGRES_DB: evalforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U evalforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev,postgres]"
+      - name: Postgres-backed storage tests
+        env:
+          EVALFORGE_DATABASE_URL: postgresql://evalforge:evalforge@localhost:5432/evalforge
+        run: pytest tests/test_db.py -v
