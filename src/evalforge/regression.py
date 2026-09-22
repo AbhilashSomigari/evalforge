@@ -37,9 +37,12 @@ def evaluate_gates(candidate: EvalRun, gates: list[GateSpec], baseline: EvalRun 
             raise ValueError(f"Gate {gate.metric} uses max_regression but no baseline was supplied")
         base = metric_value(baseline, gate.metric)
         delta = actual - base
+        # GateSpec.validate_threshold guarantees value or max_regression is set; value
+        # was None to reach this branch, so max_regression must be set.
+        assert gate.max_regression is not None
         # max_regression is an absolute metric delta. Direction comes from op:
         # >=/> metrics must not fall too much; <=/< metrics must not rise too much.
-        allowed = float(gate.max_regression)
+        allowed = gate.max_regression
         if gate.op in (">=", ">"):
             passed = delta >= -allowed
             threshold = f"drop <= {allowed}"

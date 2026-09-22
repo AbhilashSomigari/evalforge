@@ -46,12 +46,19 @@ def run(
     url: Annotated[str | None, typer.Option("--url", help="HTTP agent endpoint")]=None,
     out: Annotated[Path, typer.Option("--out", "-o")]=Path("runs/latest.json"),
     baseline: Annotated[Path | None, typer.Option("--baseline", exists=True, readable=True)]=None,
+    retries: Annotated[
+        int, typer.Option("--retries", help="Retry a failed agent invocation this many times (0 = off)")
+    ]=0,
 ) -> None:
     """Run an evaluation suite and enforce its CI gates."""
     if bool(agent) == bool(url):
         raise typer.BadParameter("Provide exactly one of --agent or --url")
     spec = load_suite(suite)
-    adapter = CommandAgentAdapter(agent) if agent else HttpAgentAdapter(url)  # type: ignore[arg-type]
+    adapter = (
+        CommandAgentAdapter(agent, retries=retries)
+        if agent
+        else HttpAgentAdapter(url, retries=retries)  # type: ignore[arg-type]
+    )
     result = asyncio.run(EvalRunner(spec, adapter).run())
     save_run(result, out)
     _print_summary(result)
@@ -78,14 +85,17 @@ def ab_test(
     agent_a: Annotated[str, typer.Option("--agent-a")],
     agent_b: Annotated[str, typer.Option("--agent-b")],
     out_dir: Annotated[Path, typer.Option("--out-dir")]=Path("runs/ab"),
+    retries: Annotated[
+        int, typer.Option("--retries", help="Retry a failed agent invocation this many times (0 = off)")
+    ]=0,
 ) -> None:
     """Run the same suite against two agent variants for prompt/model A/B testing."""
     spec = load_suite(suite)
 
     async def _run_both():
         return await asyncio.gather(
-            EvalRunner(spec, CommandAgentAdapter(agent_a)).run(),
-            EvalRunner(spec, CommandAgentAdapter(agent_b)).run(),
+            EvalRunner(spec, CommandAgentAdapter(agent_a, retries=retries)).run(),
+            EvalRunner(spec, CommandAgentAdapter(agent_b, retries=retries)).run(),
         )
 
     a, b = asyncio.run(_run_both())
@@ -102,7 +112,7 @@ def ab_test(
     table.add_column("A", justify="right")
     table.add_column("B", justify="right")
     table.add_column("Delta", justify="right")
-    for field in a.summary.model_fields:
+    for field in type(a.summary).model_fields:
         av, bv = getattr(a.summary, field), getattr(b.summary, field)
         if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
             table.add_row(field, f"{av:.4f}", f"{bv:.4f}", f"{bv-av:+.4f}")
@@ -122,7 +132,7 @@ def compare(
     table.add_column("Baseline", justify="right")
     table.add_column("Candidate", justify="right")
     table.add_column("Delta", justify="right")
-    for field in a.summary.model_fields:
+    for field in type(a.summary).model_fields:
         av = getattr(a.summary, field)
         bv = getattr(b.summary, field)
         if isinstance(av, (int, float)) and isinstance(bv, (int, float)):

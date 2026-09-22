@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<1", "ruff>=0.6,<1"]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<1", "ruff>=0.6,<1", "mypy>=1.11,<2", "types-PyYAML>=6,<7"]
 
 [project.scripts]
 evalforge = "evalforge.cli:app"
@@ -35,3 +35,10 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true

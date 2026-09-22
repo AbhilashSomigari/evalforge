@@ -117,11 +117,17 @@ class RunSummary(BaseModel):
     avg_input_tokens: float = 0.0
     avg_output_tokens: float = 0.0
     total_cost_usd: float = 0.0
+    total_judge_input_tokens: int = 0
+    total_judge_output_tokens: int = 0
     trials: int = 0
     failed_trials: int = 0
 
 
+CURRENT_SCHEMA_VERSION = 1
+
+
 class EvalRun(BaseModel):
+    schema_version: int = CURRENT_SCHEMA_VERSION
     id: str = Field(default_factory=lambda: str(uuid4()))
     suite_name: str
     created_at: datetime = Field(default_factory=utc_now)

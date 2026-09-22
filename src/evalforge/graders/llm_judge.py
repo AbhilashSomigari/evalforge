@@ -19,7 +19,9 @@ class OpenAICompatibleJudgeGrader(Grader):
 
     async def grade(self, task: TaskSpec, output: AgentOutput, spec: GraderSpec) -> GradeResult:
         base_url = spec.config.get("base_url", os.getenv("EVALFORGE_JUDGE_BASE_URL", "https://api.openai.com/v1"))
-        api_key = spec.config.get("api_key", os.getenv("EVALFORGE_JUDGE_API_KEY"))
+        # API key is env-var-only: suite YAML files are typically committed to a repo,
+        # and spec.config is a bad place for a secret to end up.
+        api_key = os.getenv("EVALFORGE_JUDGE_API_KEY")
         model = spec.config.get("model", os.getenv("EVALFORGE_JUDGE_MODEL"))
         if not api_key or not model:
             return GradeResult(
@@ -55,17 +57,38 @@ AGENT OUTPUT:
             "temperature": 0,
             "response_format": {"type": "json_object"},
         }
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(f"{base_url.rstrip('/')}/chat/completions", headers=headers, json=payload)
-            response.raise_for_status()
-            body = response.json()
-        content = body["choices"][0]["message"]["content"]
-        parsed = json.loads(content)
-        score = max(0.0, min(1.0, float(parsed["score"])))
+        # A judge call is an external dependency the run doesn't control (rate limits,
+        # provider outages, malformed responses). Failing here must degrade this one
+        # grade, not take down the whole suite's grading pass.
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    f"{base_url.rstrip('/')}/chat/completions", headers=headers, json=payload
+                )
+                response.raise_for_status()
+                body = response.json()
+            content = body["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
+            score = max(0.0, min(1.0, float(parsed["score"])))
+        except Exception as exc:
+            return GradeResult(
+                grader=spec.name or spec.type,
+                score=0.0,
+                passed=False,
+                reason=f"LLM judge call failed: {type(exc).__name__}: {exc}",
+            )
+
+        usage = body.get("usage") or {}
         return GradeResult(
             grader=spec.name or spec.type,
             score=score,
             passed=score >= spec.pass_threshold,
             reason=str(parsed.get("reason", "")),
-            metadata={"judge_model": model},
+            metadata={
+                "judge_model": model,
+                # Token counts only: with no pricing table for arbitrary OpenAI-compatible
+                # endpoints, a fabricated dollar figure would be worse than none.
+                "judge_input_tokens": usage.get("prompt_tokens", 0),
+                "judge_output_tokens": usage.get("completion_tokens", 0),
+            },
         )

@@ -86,6 +86,8 @@ def summarize(results: list[TrialResult]) -> RunSummary:
         avg_input_tokens=mean(r.output.usage.input_tokens for r in results),
         avg_output_tokens=mean(r.output.usage.output_tokens for r in results),
         total_cost_usd=sum(r.output.usage.cost_usd for r in results),
+        total_judge_input_tokens=sum(int(g.metadata.get("judge_input_tokens", 0)) for g in grades),
+        total_judge_output_tokens=sum(int(g.metadata.get("judge_output_tokens", 0)) for g in grades),
         trials=len(results),
         failed_trials=sum(bool(r.error) for r in results),
     )

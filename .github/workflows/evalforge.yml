@@ -20,6 +20,8 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e ".[dev]"
+      - name: Type check
+        run: mypy src
       - name: Unit tests
         run: pytest
       - name: Agent regression suite
