@@ -38,10 +38,9 @@ def test_run_requires_exactly_one_of_agent_or_url(tmp_path):
     assert result.exit_code != 0
 
 
-def test_run_is_saved_even_when_gate_evaluation_raises(tmp_path, monkeypatch):
-    # A max_regression gate with no resolvable baseline makes evaluate_gates
-    # raise (by design - that's a real misconfiguration to surface loudly).
-    # The run itself already happened and must not be lost because of it.
+def test_regression_gate_without_baseline_fails_cleanly(tmp_path, monkeypatch):
+    # No baseline means the regression gate can't pass: it must fail the job
+    # (exit 2, like any failed gate) with a readable reason, not a traceback.
     monkeypatch.setenv("GIT_BRANCH", "main")
     suite = tmp_path / "suite.yaml"
     suite.write_text(
@@ -60,9 +59,71 @@ def test_run_is_saved_even_when_gate_evaluation_raises(tmp_path, monkeypatch):
     )
     out = tmp_path / "r.json"
     result = runner.invoke(app, ["run", "--suite", str(suite), "--agent", AGENT_CMD, "--out", str(out)])
-    assert result.exception is not None
-    assert out.exists()
+    assert result.exit_code == 2, result.output
+    assert "no baseline" in result.output
+    assert "FAIL" in result.output
+    assert "Traceback" not in result.output
     assert json.loads(out.read_text())["summary"]["task_success"] == 1.0
+
+
+def test_run_is_saved_even_when_gate_evaluation_raises(tmp_path, monkeypatch):
+    # The run already happened; failing to evaluate its gates must not lose it.
+    def boom(*args, **kwargs):
+        raise ValueError("simulated gate failure")
+
+    monkeypatch.setattr("evalforge.cli.evaluate_gates", boom)
+    out = tmp_path / "r.json"
+    result = runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
+    assert result.exit_code == 1
+    assert "could not evaluate gates (the run itself was saved)" in result.output
+    assert "simulated gate failure" in result.output
+    assert out.exists()
+
+
+def test_invalid_suite_is_a_clean_error_before_running_anything(tmp_path):
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(
+        textwrap.dedent(
+            """
+            name: typo
+            tasks:
+              - id: t1
+                input: hi
+            gates:
+              - metric: task_sucess
+                op: ">="
+                value: 0.9
+            """
+        )
+    )
+    out = tmp_path / "r.json"
+    result = runner.invoke(app, ["run", "--suite", str(suite), "--agent", AGENT_CMD, "--out", str(out)])
+    assert result.exit_code == 1
+    assert "invalid suite" in result.output
+    assert "Unknown gate metric" in result.output
+    assert not out.exists()
+
+
+def test_unparseable_yaml_is_a_clean_error(tmp_path):
+    suite = tmp_path / "suite.yaml"
+    suite.write_text("name: [unclosed\n")
+    result = runner.invoke(
+        app, ["run", "--suite", str(suite), "--agent", AGENT_CMD, "--out", str(tmp_path / "r.json")]
+    )
+    assert result.exit_code == 1
+    assert "invalid suite" in result.output
+
+
+def test_compare_with_incompatible_run_file_is_a_clean_error(tmp_path):
+    good, old = tmp_path / "good.json", tmp_path / "old.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(good)])
+    data = json.loads(good.read_text())
+    data["schema_version"] = 0
+    old.write_text(json.dumps(data))
+    result = runner.invoke(app, ["compare", "--baseline", str(old), "--candidate", str(good)])
+    assert result.exit_code == 1
+    assert "can't read run" in result.output
+    assert "schema_version=0" in result.output
 
 
 def test_run_exits_2_on_gate_failure(tmp_path):

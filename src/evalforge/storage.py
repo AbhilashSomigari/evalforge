@@ -17,19 +17,28 @@ def save_run(run: EvalRun, path: str | Path) -> Path:
     return path
 
 
-def load_run(path: str | Path) -> EvalRun:
-    path = Path(path)
-    data = json.loads(path.read_text())
+def parse_run(data: object, source: str) -> EvalRun:
+    """Validate a decoded run artifact, from a file or a Postgres row alike.
+
+    Both backends must apply the same compatibility rule: a run written under
+    a different schema_version is rejected with a clear message rather than
+    half-parsed (or failing deep inside pydantic validation).
+    """
     if not isinstance(data, dict):
-        raise ValueError(f"{path} does not contain a run object")
+        raise ValueError(f"{source} does not contain a run object")
     version = data.get("schema_version")
     if version != CURRENT_SCHEMA_VERSION:
         raise ValueError(
-            f"{path} has schema_version={version!r}, but this build of EvalForge "
+            f"{source} has schema_version={version!r}, but this build of EvalForge "
             f"reads schema_version={CURRENT_SCHEMA_VERSION}. Re-run the suite to "
             "regenerate the run artifact."
         )
     return EvalRun.model_validate(data)
+
+
+def load_run(path: str | Path) -> EvalRun:
+    path = Path(path)
+    return parse_run(json.loads(path.read_text()), str(path))
 
 
 def try_load_run(path: str | Path) -> EvalRun | None:

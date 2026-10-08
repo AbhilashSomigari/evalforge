@@ -86,3 +86,17 @@ def test_request_id_from_client_is_preserved(client):
 )
 def test_parse_cors_origins(raw, expected):
     assert api_module.parse_cors_origins(raw) == expected
+
+
+def test_rejects_key_differing_only_in_length(client, monkeypatch):
+    monkeypatch.setenv(api_module.API_KEY_ENV, "secret-token")
+    for header in ("Bearer secret-tokenX", "Bearer secret-toke", "secret-token", ""):
+        assert client.get("/runs", headers={"Authorization": header}).status_code == 401
+
+
+def test_rate_limit_also_throttles_failed_auth_attempts(client, monkeypatch):
+    # Otherwise brute-forcing the API key would never hit the limit.
+    monkeypatch.setenv(api_module.API_KEY_ENV, "secret-token")
+    monkeypatch.setenv(api_module.RATE_LIMIT_ENV, "2")
+    wrong = {"Authorization": "Bearer guess"}
+    assert [client.get("/runs", headers=wrong).status_code for _ in range(3)] == [401, 401, 429]

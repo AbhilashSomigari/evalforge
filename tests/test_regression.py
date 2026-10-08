@@ -1,3 +1,5 @@
+import pytest
+
 from evalforge.models import EvalRun, GateSpec, RunSummary
 from evalforge.regression import evaluate_gates
 
@@ -23,3 +25,15 @@ def test_regression_gate():
         baseline=run(0.93),
     )
     assert result[0].passed
+
+
+def test_regression_gate_without_baseline_fails_instead_of_raising():
+    [result] = evaluate_gates(run(0.95), [GateSpec(metric="task_success", op=">=", max_regression=0.03)])
+    assert not result.passed
+    assert result.note == "no baseline"
+    assert result.threshold == "drop <= 0.03"
+
+
+def test_unknown_gate_metric_is_rejected_at_load_time():
+    with pytest.raises(ValueError, match="Unknown gate metric 'task_sucess'"):
+        GateSpec(metric="task_sucess", op=">=", value=0.9)

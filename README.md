@@ -69,7 +69,7 @@ Normal unit tests are necessary but insufficient for agents. Agents are non-dete
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+make install      # hash-pinned deps from requirements/dev.lock, then the package itself
 pytest
 
 evalforge run \
@@ -78,7 +78,15 @@ evalforge run \
   --out runs/demo.json
 ```
 
-A failing gate exits with code `2`, which is what blocks a CI job.
+A failing gate exits with code `2`, which is what blocks a CI job. Invalid
+input — a malformed suite, an unknown gate metric, an unreadable run file —
+exits with code `1` and a one-line error, before any agent is called where
+possible.
+
+Dependencies are pinned with hashes in `requirements/*.lock` (runtime, dev,
+dev+postgres), used by CI and the Docker image. After changing dependencies in
+`pyproject.toml`, regenerate them with `make lock` (needs
+[uv](https://docs.astral.sh/uv/)).
 
 ## Agent protocol
 
@@ -133,7 +141,7 @@ tasks:
         pass_threshold: 1.0
 ```
 
-For a regression gate, provide a baseline. A quality metric with `op: ">="` is allowed to drop by at most `max_regression`; a cost/latency metric with `op: "<="` is allowed to rise by at most that amount.
+For a regression gate, provide a baseline. A quality metric with `op: ">="` is allowed to drop by at most `max_regression`; a cost/latency metric with `op: "<="` is allowed to rise by at most that amount. A regression gate with no baseline to compare against **fails** (shown as `no baseline` in the gates table) — it can't pass without one.
 
 ```bash
 evalforge run --suite examples/suites/customer_support.yaml --agent "..." \
@@ -155,6 +163,14 @@ since changed (a task, grader, or gate edited — not just its `description`
 or `concurrency`), you'll get a warning that the comparison may not be
 meaningful, since `evalforge` tracks a content hash (`suite_version`) of
 every run's suite on the `EvalRun` itself.
+
+**In CI, `--baseline-branch` needs storage that outlives the job.** Each CI
+job starts with an empty workspace, so without Postgres the `--out`
+directory never contains an earlier run and every regression gate fails with
+`no baseline`. Either set `EVALFORGE_DATABASE_URL` (as a secret) to a
+Postgres instance your CI can reach, or restore previous run files into the
+`--out` directory before running (e.g. `actions/cache` or downloading the
+main branch's last `evalforge-run` artifact).
 
 ## Replay a trajectory
 
@@ -228,8 +244,24 @@ export EVALFORGE_DATABASE_URL=postgresql://evalforge:evalforge@localhost:5432/ev
 pip install -e ".[postgres]"
 ```
 
+Database connections are pooled (`EVALFORGE_DB_POOL_MAX_SIZE`, default 10).
+Runs stored under a different `schema_version` are treated the same way in
+both backends: skipped (with a logged warning) when listing or resolving a
+baseline, and a `409` with the reason from `/runs/{key}`.
+
 `docker-compose.yml` runs a Postgres container alongside the API and wires
-this automatically.
+this automatically. It requires a `.env` file next to it:
+
+```bash
+cp .env.example .env    # then set POSTGRES_PASSWORD and EVALFORGE_API_KEY (e.g. openssl rand -hex 32)
+docker compose up --build
+```
+
+Compose refuses to start without both values, and publishes the API on
+`127.0.0.1:8000` only; put a TLS-terminating reverse proxy in front of it to
+expose it further. (If a `evalforge-db` volume already exists from an older
+setup, Postgres keeps the password it was initialized with — change it in
+the database, or remove the volume, to match `.env`.)
 
 ### Securing the API
 
@@ -239,8 +271,15 @@ Before exposing it beyond your own machine:
 ```bash
 export EVALFORGE_API_KEY=some-long-random-value      # required Authorization: Bearer <key> on /runs*
 export EVALFORGE_CORS_ORIGINS=https://your-dashboard.example  # comma-separated allowlist; unset = no cross-origin reads
-export EVALFORGE_RATE_LIMIT_PER_MINUTE=60             # per-client-IP, in-memory (per process, not shared across replicas)
+export EVALFORGE_RATE_LIMIT_PER_MINUTE=60             # per client IP; see below
 ```
+
+The API key is compared in constant time. The rate limit is counted in
+Postgres when `EVALFORGE_DATABASE_URL` is set (a fixed one-minute window
+shared by every replica); without a database it falls back to an in-memory
+counter per process. Behind a reverse proxy every request arrives from the
+proxy's IP, so rate-limit there (or by forwarded client IP at the proxy)
+rather than relying on this per-IP limit alone.
 
 `/health` never requires the API key, so container/orchestrator health checks
 keep working unauthenticated. Every request gets an `X-Request-ID` (echoed

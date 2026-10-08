@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -60,3 +62,12 @@ def test_get_run_rejects_path_traversal(client, tmp_path):
     secret.write_text("{}")
     response = client.get("/runs/..%2Fsecret.json")
     assert response.status_code == 404
+
+
+def test_get_run_with_incompatible_schema_version_is_409_not_500(client, tmp_path):
+    data = EvalRun(suite_name="s", agent_name="a", results=[], summary=RunSummary()).model_dump(mode="json")
+    data["schema_version"] = 0
+    (tmp_path / "old.json").write_text(json.dumps(data))
+    response = client.get("/runs/old.json")
+    assert response.status_code == 409
+    assert "schema_version=0" in response.json()["detail"]

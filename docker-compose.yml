@@ -1,12 +1,19 @@
+# Secrets come from a .env file next to this one (gitignored) - copy
+# .env.example to .env and fill it in. Compose refuses to start if either is
+# missing, so the stack can't come up with a default password or an open API.
 services:
   evalforge:
     build: .
     ports:
-      - "8000:8000"
+      # Localhost only. Put a TLS-terminating reverse proxy in front of this to
+      # expose it beyond the host, rather than publishing it on 0.0.0.0.
+      - "127.0.0.1:${EVALFORGE_PORT:-8000}:8000"
     volumes:
       - ./runs:/app/runs
     environment:
-      EVALFORGE_DATABASE_URL: postgresql://evalforge:evalforge@db:5432/evalforge
+      EVALFORGE_DATABASE_URL: postgresql://evalforge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}@db:5432/evalforge
+      EVALFORGE_API_KEY: ${EVALFORGE_API_KEY:?set EVALFORGE_API_KEY in .env (see .env.example)}
+      EVALFORGE_RATE_LIMIT_PER_MINUTE: ${EVALFORGE_RATE_LIMIT_PER_MINUTE:-120}
     depends_on:
       db:
         condition: service_healthy
@@ -15,7 +22,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: evalforge
-      POSTGRES_PASSWORD: evalforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
       POSTGRES_DB: evalforge
     volumes:
       - evalforge-db:/var/lib/postgresql/data

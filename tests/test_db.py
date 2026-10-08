@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
@@ -31,7 +32,7 @@ def _run(suite_name: str = "s", task_success: float = 1.0, **overrides) -> EvalR
 def clean_runs_table():
     db.ensure_schema()
     with db._connect() as conn:
-        conn.execute("TRUNCATE TABLE runs")
+        conn.execute("TRUNCATE TABLE runs, rate_limits")
     yield
 
 
@@ -132,3 +133,51 @@ def test_api_uses_db_backend_when_enabled(monkeypatch):
 
     missing = client.get("/runs/does-not-exist")
     assert missing.status_code == 404
+
+
+def test_fetch_run_rejects_incompatible_schema_version():
+    run = _run(schema_version=0)
+    db.insert_run(run)
+    with pytest.raises(ValueError, match="schema_version=0"):
+        db.fetch_run(run.id)
+
+
+def test_latest_run_skips_newer_incompatible_run_and_logs_it(caplog, monkeypatch):
+    monkeypatch.setattr(logging.getLogger("evalforge"), "propagate", True)
+    compatible = _run(git_branch="main")
+    db.insert_run(compatible)
+    newer_incompatible = _run(git_branch="main", schema_version=0)
+    db.insert_run(newer_incompatible)
+    with caplog.at_level(logging.WARNING, logger="evalforge"):
+        found = db.latest_run("s", "main")
+    assert found is not None and found.id == compatible.id
+    assert [r.extra_fields["run_id"] for r in caplog.records] == [newer_incompatible.id]
+
+
+def test_list_runs_skips_incompatible_rows():
+    ok = _run()
+    db.insert_run(ok)
+    db.insert_run(_run(schema_version=0))
+    assert [r["id"] for r in db.list_runs()] == [ok.id]
+
+
+def test_connections_come_from_one_pool_per_url():
+    for _ in range(5):
+        db.fetch_run("does-not-exist")
+    assert list(db._pools) == [db.database_url()]
+
+
+def test_rate_limit_counter_is_shared_and_per_client():
+    assert [db.hit_rate_limit("10.0.0.1", 60) for _ in range(3)] == [1, 2, 3]
+    assert db.hit_rate_limit("10.0.0.2", 60) == 1
+
+
+def test_api_rate_limit_uses_postgres_when_enabled(monkeypatch):
+    monkeypatch.setenv(api_module.RATE_LIMIT_ENV, "2")
+    client = TestClient(api_module.app)
+    assert [client.get("/runs").status_code for _ in range(3)] == [200, 200, 429]
+    # Counted in Postgres, not in this process's memory - which is what makes
+    # the limit hold across replicas.
+    assert not api_module._request_times
+    with db._connect() as conn:
+        assert conn.execute("SELECT sum(hits) FROM rate_limits").fetchone()[0] == 3

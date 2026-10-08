@@ -78,6 +78,11 @@ class GateSpec(BaseModel):
     def validate_threshold(self) -> GateSpec:
         if self.value is None and self.max_regression is None:
             raise ValueError("Gate must define either value or max_regression")
+        # Catch a typo'd metric when the suite loads, not after the agent has
+        # already run every task.
+        if self.metric not in RunSummary.model_fields:
+            known = ", ".join(RunSummary.model_fields)
+            raise ValueError(f"Unknown gate metric {self.metric!r}; expected one of: {known}")
         return self
 
 

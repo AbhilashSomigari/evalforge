@@ -11,15 +11,22 @@ permissions:
 
 jobs:
   eval:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, so a runner image migration is an
+    # explicit change here instead of a surprise.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/dev.lock
       - name: Install
-        run: pip install -e ".[dev]"
+        # dev.lock deliberately excludes the postgres extra: this job proves
+        # nothing imports psycopg at module level.
+        run: |
+          pip install --require-hashes -r requirements/dev.lock
+          pip install --no-deps -e .
       - name: Lint
         run: ruff check src tests
       - name: Type check
@@ -34,13 +41,13 @@ jobs:
             --out runs/ci.json
       - name: Upload evaluation artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evalforge-run
           path: runs/ci.json
 
   db:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
@@ -56,14 +63,32 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/dev-postgres.lock
       - name: Install
-        run: pip install -e ".[dev,postgres]"
+        run: |
+          pip install --require-hashes -r requirements/dev-postgres.lock
+          pip install --no-deps -e .
       - name: Postgres-backed storage tests
         env:
           EVALFORGE_DATABASE_URL: postgresql://evalforge:evalforge@localhost:5432/evalforge
         run: pytest tests/test_db.py -v
+
+  package:
+    # Build the sdist/wheel and validate their metadata, so the package is
+    # always publishable - without publishing anything.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build and check
+        run: |
+          pip install build==1.6.1 twine==7.0.0
+          python -m build
+          twine check --strict dist/*

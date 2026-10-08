@@ -13,6 +13,8 @@ class GateResult:
     threshold: str
     baseline: float | None = None
     delta: float | None = None
+    # Why a gate failed without being evaluated (e.g. "no baseline").
+    note: str | None = None
 
 
 def metric_value(run: EvalRun, metric: str) -> float:
@@ -33,21 +35,21 @@ def evaluate_gates(candidate: EvalRun, gates: list[GateSpec], baseline: EvalRun 
             passed = _compare(actual, gate.op, gate.value)
             results.append(GateResult(gate.metric, passed, actual, f"{gate.op} {gate.value}"))
             continue
-        if baseline is None:
-            raise ValueError(f"Gate {gate.metric} uses max_regression but no baseline was supplied")
-        base = metric_value(baseline, gate.metric)
-        delta = actual - base
         # GateSpec.validate_threshold guarantees value or max_regression is set; value
         # was None to reach this branch, so max_regression must be set.
         assert gate.max_regression is not None
         # max_regression is an absolute metric delta. Direction comes from op:
         # >=/> metrics must not fall too much; <=/< metrics must not rise too much.
         allowed = gate.max_regression
-        if gate.op in (">=", ">"):
-            passed = delta >= -allowed
-            threshold = f"drop <= {allowed}"
-        else:
-            passed = delta <= allowed
-            threshold = f"increase <= {allowed}"
+        rising_is_bad = gate.op not in (">=", ">")
+        threshold = f"increase <= {allowed}" if rising_is_bad else f"drop <= {allowed}"
+        if baseline is None:
+            # Fail the gate (and so the CI job), visibly, rather than raise: a
+            # regression gate that can't compare against anything must not pass.
+            results.append(GateResult(gate.metric, False, actual, threshold, note="no baseline"))
+            continue
+        base = metric_value(baseline, gate.metric)
+        delta = actual - base
+        passed = delta <= allowed if rising_is_bad else delta >= -allowed
         results.append(GateResult(gate.metric, passed, actual, threshold, base, delta))
     return results

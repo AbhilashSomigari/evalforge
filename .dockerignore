@@ -1,0 +1,11 @@
+# The image only COPYs explicit paths, but keep secrets and bulk out of the
+# build context entirely.
+.env
+.git
+.venv
+runs/
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+*.egg-info

@@ -10,6 +10,15 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{name = "EvalForge Contributors"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+]
 dependencies = [
   "pydantic>=2.8,<3",
   "PyYAML>=6,<7",
@@ -22,7 +31,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<1", "ruff>=0.16.10,<0.17", "httpx2>=2,<3", "mypy>=1.11,<2", "types-PyYAML>=6,<7"]
-postgres = ["psycopg[binary]>=3.1,<4"]
+postgres = ["psycopg[binary,pool]>=3.1,<4"]
+
+[project.urls]
+Homepage = "https://github.com/AbhilashSomigari/evalforge"
+Repository = "https://github.com/AbhilashSomigari/evalforge"
+Issues = "https://github.com/AbhilashSomigari/evalforge/issues"
 
 [project.scripts]
 evalforge = "evalforge.cli:app"
@@ -52,7 +66,8 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
-# psycopg is an optional extra (the "postgres" group); mypy runs in CI without
-# it installed, so its import must not be treated as a missing-stub error.
-module = "psycopg.*"
+# psycopg (+ psycopg_pool) is an optional extra (the "postgres" group); mypy
+# runs in CI without it installed, so its import must not be treated as a
+# missing-stub error.
+module = ["psycopg.*", "psycopg_pool.*"]
 ignore_missing_imports = true

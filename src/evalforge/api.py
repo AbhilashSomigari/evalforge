@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import time
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -22,11 +23,12 @@ logger = get_logger(__name__)
 API_KEY_ENV = "EVALFORGE_API_KEY"
 CORS_ORIGINS_ENV = "EVALFORGE_CORS_ORIGINS"
 RATE_LIMIT_ENV = "EVALFORGE_RATE_LIMIT_PER_MINUTE"
-_RATE_LIMIT_WINDOW_S = 60.0
+_RATE_LIMIT_WINDOW_S = 60
 
-# Per-process, in-memory: resets on restart and isn't shared across replicas.
-# Fine for a single instance; a multi-replica deployment needs a shared store
-# (e.g. Redis) for this to actually bound the total request rate.
+# In-memory fallback, used only without a database: per process, resets on
+# restart, not shared across replicas. With EVALFORGE_DATABASE_URL set, the
+# limit is counted in Postgres instead (db.hit_rate_limit), so it bounds the
+# total request rate across every replica.
 _request_times: dict[str, list[float]] = defaultdict(list)
 
 
@@ -42,6 +44,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     if db.is_enabled():
         db.ensure_schema()
     yield
+    db.close_pools()
 
 
 app = FastAPI(title="EvalForge API", version="0.1.0", lifespan=_lifespan)
@@ -83,7 +86,10 @@ def _require_api_key(authorization: Annotated[str | None, Header()] = None) -> N
     expected = os.getenv(API_KEY_ENV)
     if not expected:
         return  # Auth is opt-in: unset means open, which the README calls out explicitly.
-    if authorization != f"Bearer {expected}":
+    # Constant-time comparison: a plain != returns as soon as the first byte
+    # differs, which leaks how much of a guessed key was right via timing.
+    supplied = (authorization or "").encode()
+    if not secrets.compare_digest(supplied, f"Bearer {expected}".encode()):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -92,6 +98,11 @@ def _check_rate_limit(request: Request) -> None:
     if limit <= 0:
         return
     client = request.client.host if request.client else "unknown"
+    if db.is_enabled():
+        # Fixed window in Postgres, shared by all replicas.
+        if db.hit_rate_limit(client, _RATE_LIMIT_WINDOW_S) > limit:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        return
     now = time.monotonic()
     hits = _request_times[client]
     cutoff = now - _RATE_LIMIT_WINDOW_S
@@ -102,7 +113,9 @@ def _check_rate_limit(request: Request) -> None:
     hits.append(now)
 
 
-router = APIRouter(dependencies=[Depends(_require_api_key), Depends(_check_rate_limit)])
+# Rate limit *before* auth: otherwise rejected (401) requests are never
+# counted, and guessing the API key is unthrottled.
+router = APIRouter(dependencies=[Depends(_check_rate_limit), Depends(_require_api_key)])
 
 
 @app.get("/health")
@@ -151,17 +164,22 @@ def list_runs(
 
 @router.get("/runs/{key}", response_model=EvalRun)
 def get_run(key: str) -> EvalRun:
-    if db.is_enabled():
-        run = db.fetch_run(key)
-        if run is None:
-            raise HTTPException(status_code=404, detail="Run not found")
-        return run
+    try:
+        if db.is_enabled():
+            run = db.fetch_run(key)
+            if run is None:
+                raise HTTPException(status_code=404, detail="Run not found")
+            return run
 
-    safe = Path(key).name
-    path = RUN_DIR / safe
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Run not found")
-    return load_run(path)
+        safe = Path(key).name
+        path = RUN_DIR / safe
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        return load_run(path)
+    except ValueError as exc:
+        # The run exists but this build can't read it (e.g. an older
+        # schema_version) - say so instead of a bare 500.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 app.include_router(router)

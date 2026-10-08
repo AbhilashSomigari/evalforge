@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -18,6 +19,28 @@ from evalforge.models import EvalRun, SuiteSpec, TrialResult, compute_suite_vers
 from evalforge.regression import evaluate_gates
 from evalforge.runner import EvalRunner, summarize
 from evalforge.storage import find_latest_on_branch, load_run, save_run
+
+
+def _fail(message: str) -> NoReturn:
+    """Exit 1 with a one-line error: bad input files and unevaluable gates are
+    user/config errors, not crashes, and shouldn't print a traceback."""
+    # soft_wrap: keep the message on one line so CI logs stay greppable.
+    err_console.print(f"[red]Error:[/red] {message}", soft_wrap=True)
+    raise typer.Exit(code=1)
+
+
+def _load_suite(path: Path) -> SuiteSpec:
+    try:
+        return load_suite(path)
+    except (ValueError, yaml.YAMLError) as exc:  # pydantic's ValidationError is a ValueError
+        _fail(f"invalid suite {path}: {exc}")
+
+
+def _load_run(path: Path) -> EvalRun:
+    try:
+        return load_run(path)
+    except (OSError, ValueError) as exc:
+        _fail(f"can't read run {path}: {exc}")
 
 
 def _persist(run: EvalRun) -> None:
@@ -47,7 +70,7 @@ def _resolve_baseline(
     actually keeping its run artifacts.
     """
     if baseline:
-        fixed = load_run(baseline)
+        fixed = _load_run(baseline)
         console.print(f"Baseline: {_describe_run(fixed)} from [bold]{baseline}[/bold]")
         return fixed
     if not baseline_branch:
@@ -91,6 +114,7 @@ def _warn_if_suite_version_mismatch(spec: SuiteSpec, baseline: EvalRun) -> None:
 
 app = typer.Typer(help="EvalForge — CI/CD evaluation infrastructure for AI agents")
 console = Console()
+err_console = Console(stderr=True)
 
 
 @app.callback()
@@ -139,7 +163,7 @@ def run(
         raise typer.BadParameter("Provide exactly one of --agent or --url")
     if baseline and baseline_branch:
         raise typer.BadParameter("Provide at most one of --baseline or --baseline-branch")
-    spec = load_suite(suite)
+    spec = _load_suite(suite)
     adapter = (
         CommandAgentAdapter(agent, retries=retries)
         if agent
@@ -154,24 +178,25 @@ def run(
     # make a first-ever run on a branch resolve itself as its own baseline.
     base = _resolve_baseline(spec, baseline, baseline_branch, run_dir=out.parent) if spec.gates else None
 
-    # Save/persist unconditionally, before evaluating gates: evaluate_gates
-    # can legitimately raise (e.g. a max_regression gate with no baseline),
-    # and a run that already happened must not be lost just because its
-    # gates couldn't be evaluated.
+    # Save/persist unconditionally, before evaluating gates: if gate
+    # evaluation fails, a run that already happened must not be lost with it.
     save_run(result, out)
     console.print(f"Saved run: [bold]{out}[/bold]")
     _persist(result)
 
     passed_gates = True
     if spec.gates:
-        gates = evaluate_gates(result, spec.gates, base)
+        try:
+            gates = evaluate_gates(result, spec.gates, base)
+        except ValueError as exc:
+            _fail(f"could not evaluate gates (the run itself was saved): {exc}")
         table = Table(title="CI gates")
         table.add_column("Gate")
         table.add_column("Actual", justify="right")
         table.add_column("Threshold")
         # Only regression (max_regression) gates have a baseline value; skip
         # the columns entirely when every gate is absolute.
-        show_baseline = any(g.baseline is not None for g in gates)
+        show_baseline = any(g.baseline is not None or g.note for g in gates)
         if show_baseline:
             table.add_column("Baseline", justify="right")
             table.add_column("Delta", justify="right")
@@ -182,7 +207,7 @@ def run(
                 row += (
                     [f"{g.baseline:.4f}", f"{g.delta:+.4f}"]
                     if g.baseline is not None and g.delta is not None
-                    else ["", ""]
+                    else [g.note or "", ""]
                 )
             table.add_row(*row, "PASS" if g.passed else "FAIL")
         console.print(table)
@@ -203,7 +228,7 @@ def ab_test(
     ]=0,
 ) -> None:
     """Run the same suite against two agent variants for prompt/model A/B testing."""
-    spec = load_suite(suite)
+    spec = _load_suite(suite)
 
     async def _run_both():
         return await asyncio.gather(
@@ -241,7 +266,7 @@ def compare(
     candidate: Annotated[Path, typer.Option("--candidate", exists=True, readable=True)],
 ) -> None:
     """Show metric deltas between two runs."""
-    a, b = load_run(baseline), load_run(candidate)
+    a, b = _load_run(baseline), _load_run(candidate)
     if a.suite_version and b.suite_version and a.suite_version != b.suite_version:
         console.print(
             f"[yellow]These runs used different suite definitions "
@@ -268,8 +293,8 @@ def replay(
     out: Annotated[Path, typer.Option("--out")]=Path("runs/replayed.json"),
 ) -> None:
     """Re-grade recorded outputs/trajectories without calling the agent again."""
-    spec = load_suite(suite)
-    old = load_run(run_file)
+    spec = _load_suite(suite)
+    old = _load_run(run_file)
     task_map = {t.id: t for t in spec.tasks}
 
     async def _regrade() -> EvalRun:
@@ -300,7 +325,7 @@ def replay(
 @app.command()
 def inspect(run_file: Annotated[Path, typer.Argument(exists=True, readable=True)]) -> None:
     """Print a compact JSON representation of one run."""
-    run = load_run(run_file)
+    run = _load_run(run_file)
     console.print_json(json.dumps(run.model_dump(mode="json")))
 
 
