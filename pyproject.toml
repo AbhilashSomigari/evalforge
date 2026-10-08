@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<1", "ruff>=0.6,<1", "mypy>=1.11,<2", "types-PyYAML>=6,<7"]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<1", "ruff>=0.16.10,<0.17", "httpx2>=2,<3", "mypy>=1.11,<2", "types-PyYAML>=6,<7"]
 postgres = ["psycopg[binary]>=3.1,<4"]
 
 [project.scripts]
@@ -36,6 +36,13 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# TRY004 wants TypeError for isinstance checks, but every one here validates
+# parsed file content (a suite YAML or run JSON that isn't an object) - bad
+# input data, not a programming error - and callers like
+# storage.try_load_run deliberately catch ValueError for exactly that.
+ignore = ["TRY004"]
 
 [tool.mypy]
 python_version = "3.11"

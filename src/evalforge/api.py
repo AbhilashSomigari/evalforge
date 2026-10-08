@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import db
 from .logging_utils import get_logger, log, new_request_id, set_request_id
 from .models import EvalRun
-from .storage import load_run
+from .storage import load_run, try_load_run
 
 logger = get_logger(__name__)
 
@@ -126,9 +126,8 @@ def list_runs(
         return []
     matched = []
     for path in sorted(RUN_DIR.glob("*.json"), reverse=True):
-        try:
-            run = load_run(path)
-        except Exception:
+        run = try_load_run(path)
+        if run is None:
             continue
         if suite and run.suite_name != suite:
             continue

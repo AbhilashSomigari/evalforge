@@ -7,7 +7,13 @@ import sys
 
 import pytest
 
-from evalforge.logging_utils import JsonFormatter, configure_logging, get_logger, log, set_request_id
+from evalforge.logging_utils import (
+    JsonFormatter,
+    configure_logging,
+    get_logger,
+    log,
+    set_request_id,
+)
 
 
 @pytest.fixture(autouse=True)

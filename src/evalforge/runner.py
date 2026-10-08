@@ -48,7 +48,7 @@ class EvalRunner:
                     success=success,
                     latency_ms=latency_ms,
                 )
-            except Exception as exc:  # runner must capture failures, not kill the suite
+            except Exception as exc:  # noqa: BLE001 - capture failures, don't kill the suite
                 latency_ms = (time.perf_counter() - started) * 1000
                 from evalforge.models import AgentOutput
 

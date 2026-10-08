@@ -128,6 +128,51 @@ def test_run_auto_resolves_baseline_from_branch(tmp_path, monkeypatch):
     assert second.exit_code == 0, second.output
     assert "CI gates" in second.output
     assert "No prior run" not in second.output
+    # The resolved baseline must be named, not applied invisibly.
+    first_id = json.loads((tmp_path / "first.json").read_text())["id"]
+    assert f"Baseline: run {first_id}" in second.output
+
+
+def test_regression_gate_table_shows_baseline_and_delta(tmp_path):
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(
+        textwrap.dedent(
+            """
+            name: regression-gated
+            tasks:
+              - id: t1
+                input: hi
+            gates:
+              - metric: task_success
+                op: ">="
+                max_regression: 0.01
+            """
+        )
+    )
+    base = tmp_path / "base.json"
+    # No baseline yet: the regression gate can't be evaluated, but the run is saved.
+    runner.invoke(app, ["run", "--suite", str(suite), "--agent", AGENT_CMD, "--out", str(base)])
+    assert base.exists()
+
+    result = runner.invoke(
+        app,
+        [
+            "run", "--suite", str(suite), "--agent", AGENT_CMD,
+            "--out", str(tmp_path / "cand.json"), "--baseline", str(base),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Baseline: run" in result.output
+    assert "Delta" in result.output
+    assert "+0.0000" in result.output
+
+
+def test_absolute_only_gate_table_has_no_baseline_columns(tmp_path):
+    result = runner.invoke(
+        app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(tmp_path / "r.json")]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Delta" not in result.output
 
 
 def test_run_baseline_branch_warns_when_nothing_found(tmp_path, monkeypatch):

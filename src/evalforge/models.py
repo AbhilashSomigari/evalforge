@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ToolCall(BaseModel):
@@ -75,7 +75,7 @@ class GateSpec(BaseModel):
     max_regression: float | None = None
 
     @model_validator(mode="after")
-    def validate_threshold(self) -> "GateSpec":
+    def validate_threshold(self) -> GateSpec:
         if self.value is None and self.max_regression is None:
             raise ValueError("Gate must define either value or max_regression")
         return self

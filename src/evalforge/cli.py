@@ -47,7 +47,9 @@ def _resolve_baseline(
     actually keeping its run artifacts.
     """
     if baseline:
-        return load_run(baseline)
+        fixed = load_run(baseline)
+        console.print(f"Baseline: {_describe_run(fixed)} from [bold]{baseline}[/bold]")
+        return fixed
     if not baseline_branch:
         return None
     if db.is_enabled():
@@ -61,8 +63,20 @@ def _resolve_baseline(
             f"'{baseline_branch}' - regression gates below will fail without a baseline.[/yellow]"
         )
         return None
+    console.print(f"Baseline: {_describe_run(found)}")
     _warn_if_suite_version_mismatch(spec, found)
     return found
+
+
+def _describe_run(run: EvalRun) -> str:
+    """One-line identity of a run, so a resolved baseline is never invisible."""
+    parts = [f"run [bold]{run.id}[/bold]"]
+    if run.git_branch:
+        parts.append(f"branch '{run.git_branch}'")
+    if run.git_sha:
+        parts.append(f"sha {run.git_sha[:12]}")
+    parts.append(run.created_at.strftime("%Y-%m-%d %H:%M:%S %Z").strip())
+    return ", ".join(parts)
 
 
 def _warn_if_suite_version_mismatch(spec: SuiteSpec, baseline: EvalRun) -> None:
@@ -155,9 +169,22 @@ def run(
         table.add_column("Gate")
         table.add_column("Actual", justify="right")
         table.add_column("Threshold")
+        # Only regression (max_regression) gates have a baseline value; skip
+        # the columns entirely when every gate is absolute.
+        show_baseline = any(g.baseline is not None for g in gates)
+        if show_baseline:
+            table.add_column("Baseline", justify="right")
+            table.add_column("Delta", justify="right")
         table.add_column("Result")
         for g in gates:
-            table.add_row(g.metric, f"{g.actual:.4f}", g.threshold, "PASS" if g.passed else "FAIL")
+            row = [g.metric, f"{g.actual:.4f}", g.threshold]
+            if show_baseline:
+                row += (
+                    [f"{g.baseline:.4f}", f"{g.delta:+.4f}"]
+                    if g.baseline is not None and g.delta is not None
+                    else ["", ""]
+                )
+            table.add_row(*row, "PASS" if g.passed else "FAIL")
         console.print(table)
         passed_gates = all(g.passed for g in gates)
 

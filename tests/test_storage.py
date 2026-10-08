@@ -1,14 +1,15 @@
 import json
+import logging
 import time
 
 import pytest
 
 from evalforge.models import EvalRun, RunSummary
-from evalforge.storage import find_latest_on_branch, load_run, save_run
+from evalforge.storage import find_latest_on_branch, load_run, save_run, try_load_run
 
 
 def _run(**overrides) -> EvalRun:
-    defaults = dict(suite_name="s", agent_name="a", results=[], summary=RunSummary())
+    defaults = {"suite_name": "s", "agent_name": "a", "results": [], "summary": RunSummary()}
     defaults.update(overrides)
     return EvalRun(**defaults)
 
@@ -60,3 +61,34 @@ def test_find_latest_on_branch_skips_unreadable_files(tmp_path):
     (tmp_path / "corrupt.json").write_text("not json")
     found = find_latest_on_branch(tmp_path, "s", "main")
     assert found is not None
+
+
+@pytest.fixture
+def _evalforge_logs_propagate(monkeypatch):
+    # configure_logging() (called by CLI tests earlier in the session) turns
+    # propagation off, which would hide these records from caplog.
+    monkeypatch.setattr(logging.getLogger("evalforge"), "propagate", True)
+
+
+def test_try_load_run_logs_why_a_file_was_skipped(tmp_path, caplog, _evalforge_logs_propagate):
+    path = tmp_path / "old.json"
+    data = json.loads(_run().model_dump_json())
+    data["schema_version"] = 0
+    path.write_text(json.dumps(data))
+    with caplog.at_level(logging.WARNING, logger="evalforge"):
+        assert try_load_run(path) is None
+    [record] = caplog.records
+    assert record.message == "skipping unreadable run file"
+    assert record.extra_fields["path"] == str(path)
+    assert "schema_version" in record.extra_fields["error"]
+
+
+def test_find_latest_on_branch_warns_instead_of_silently_skipping(
+    tmp_path, caplog, _evalforge_logs_propagate
+):
+    save_run(_run(suite_name="s", git_branch="main"), tmp_path / "ok.json")
+    (tmp_path / "list.json").write_text("[]")  # valid JSON, but not a run object
+    with caplog.at_level(logging.WARNING, logger="evalforge"):
+        found = find_latest_on_branch(tmp_path, "s", "main")
+    assert found is not None
+    assert [r.extra_fields["path"] for r in caplog.records] == [str(tmp_path / "list.json")]

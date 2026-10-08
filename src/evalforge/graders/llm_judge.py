@@ -70,7 +70,7 @@ AGENT OUTPUT:
             content = body["choices"][0]["message"]["content"]
             parsed = json.loads(content)
             score = max(0.0, min(1.0, float(parsed["score"])))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - see comment above the try
             return GradeResult(
                 grader=spec.name or spec.type,
                 score=0.0,

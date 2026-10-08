@@ -146,7 +146,11 @@ looks in Postgres if `EVALFORGE_DATABASE_URL` is set, otherwise in `--out`'s
 directory. `GITHUB_HEAD_REF`/`GITHUB_REF_NAME` set this automatically in
 GitHub Actions; set `GIT_BRANCH` yourself elsewhere. Use `--baseline
 <path>` instead for a fixed file, same as before — the two are mutually
-exclusive. Either way, if the baseline came from a suite definition that's
+exclusive. Either way, the run prints which baseline it resolved (run id,
+branch, commit, timestamp), and regression gates show the baseline value and
+delta next to each result. Run files in that directory that can't be read
+(corrupt, or from an older `schema_version`) are skipped with a logged
+warning rather than silently. If the baseline came from a suite definition that's
 since changed (a task, grader, or gate edited — not just its `description`
 or `concurrency`), you'll get a warning that the comparison may not be
 meaningful, since `evalforge` tracks a content hash (`suite_version`) of

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
+from evalforge.logging_utils import get_logger, log
 from evalforge.models import CURRENT_SCHEMA_VERSION, EvalRun
+
+logger = get_logger(__name__)
 
 
 def save_run(run: EvalRun, path: str | Path) -> Path:
@@ -16,6 +20,8 @@ def save_run(run: EvalRun, path: str | Path) -> Path:
 def load_run(path: str | Path) -> EvalRun:
     path = Path(path)
     data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} does not contain a run object")
     version = data.get("schema_version")
     if version != CURRENT_SCHEMA_VERSION:
         raise ValueError(
@@ -24,6 +30,17 @@ def load_run(path: str | Path) -> EvalRun:
             "regenerate the run artifact."
         )
     return EvalRun.model_validate(data)
+
+
+def try_load_run(path: str | Path) -> EvalRun | None:
+    """load_run for directory scans: a file that can't be read is skipped, but
+    logged - silently skipping it (e.g. an old schema_version) would make a
+    baseline lookup quietly fall back to an older run, or to none at all."""
+    try:
+        return load_run(path)
+    except (OSError, ValueError) as exc:  # ValueError covers JSON + pydantic errors
+        log(logger, logging.WARNING, "skipping unreadable run file", path=str(path), error=str(exc))
+        return None
 
 
 def find_latest_on_branch(run_dir: str | Path, suite_name: str, git_branch: str) -> EvalRun | None:
@@ -35,9 +52,8 @@ def find_latest_on_branch(run_dir: str | Path, suite_name: str, git_branch: str)
         return None
     best: EvalRun | None = None
     for path in run_dir.glob("*.json"):
-        try:
-            candidate = load_run(path)
-        except Exception:
+        candidate = try_load_run(path)
+        if candidate is None:
             continue
         if candidate.suite_name != suite_name or candidate.git_branch != git_branch:
             continue

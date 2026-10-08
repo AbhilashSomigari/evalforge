@@ -4,12 +4,12 @@ from evalforge.models import GateSpec, GraderSpec, SuiteSpec, TaskSpec, compute_
 
 
 def _suite(**overrides) -> SuiteSpec:
-    defaults = dict(
-        name="s",
-        description="original description",
-        concurrency=4,
-        tasks=[TaskSpec(id="t1", input="hi")],
-    )
+    defaults = {
+        "name": "s",
+        "description": "original description",
+        "concurrency": 4,
+        "tasks": [TaskSpec(id="t1", input="hi")],
+    }
     defaults.update(overrides)
     return SuiteSpec(**defaults)
 

@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 
 pytest.importorskip("psycopg")
 
-import evalforge.api as api_module  # noqa: E402
-from evalforge import db  # noqa: E402
-from evalforge.models import EvalRun, RunSummary  # noqa: E402
+import evalforge.api as api_module
+from evalforge import db
+from evalforge.models import EvalRun, RunSummary
 
 pytestmark = pytest.mark.skipif(
     not os.getenv(db.DATABASE_URL_ENV),
