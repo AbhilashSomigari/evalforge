@@ -24,6 +24,16 @@ def _no_ambient_database_url(monkeypatch):
     monkeypatch.delenv(db.DATABASE_URL_ENV, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_ci_branch(monkeypatch):
+    # The runner reads GITHUB_HEAD_REF, then GITHUB_REF_NAME, then GIT_BRANCH.
+    # Tests set GIT_BRANCH, but GitHub Actions sets the other two - and they
+    # win. On a push to main GITHUB_REF_NAME=main happened to match; on a tag
+    # push (v0.1.0) or a pull request it didn't, and baseline tests failed.
+    for var in ("GITHUB_HEAD_REF", "GITHUB_REF_NAME", "GIT_BRANCH"):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_run_saves_output_and_passes_gates(tmp_path):
     out = tmp_path / "run.json"
     result = runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
