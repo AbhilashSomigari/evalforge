@@ -28,7 +28,7 @@ jobs:
           pip install --require-hashes -r requirements/dev.lock
           pip install --no-deps -e .
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests examples
       - name: Type check
         run: mypy src
       - name: Unit tests

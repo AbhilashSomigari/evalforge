@@ -22,7 +22,7 @@ make install
 
 | Command | Runs |
 |---|---|
-| `make lint` | `ruff check src tests` and `mypy src` |
+| `make lint` | `ruff check src tests examples` and `mypy src` |
 | `make test` | `pytest` |
 | `make demo` | The example suite against the demo agent |
 
@@ -44,6 +44,29 @@ EVALFORGE_DATABASE_URL=postgresql://evalforge:evalforge@localhost:5433/evalforge
 
 The tests truncate their tables, so never point them at a database you care
 about.
+
+## Example agents
+
+`examples/agents/` contains a deterministic demo agent (used by CI) and two
+real LLM agents, `claude_agent.py` and `openai_agent.py`.
+
+- The real agents share their system prompt, tools, and mock order system
+  through `support_tools.py`, so their scores on
+  `examples/suites/customer_support_live.yaml` are comparable. Change the test
+  environment there, never in one agent.
+- Running them calls a paid API and needs `pip install anthropic` or
+  `pip install openai` plus the matching key. Neither SDK is a package
+  dependency. Run one task directly before a full suite to catch setup
+  problems cheaply:
+
+  ```bash
+  echo '{"id": "refund", "input": "Refund order R200 please."}' \
+    | python examples/agents/claude_agent.py
+  ```
+
+- Their settings use an `EVAL_` prefix (`EVAL_CLAUDE_MODEL`,
+  `EVAL_OPENAI_MODEL`, ...) so they can't collide with variables set by
+  other tools, such as `CLAUDE_EFFORT`, which Claude Code exports.
 
 ## Dependencies
 

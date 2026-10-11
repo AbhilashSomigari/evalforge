@@ -30,7 +30,7 @@ jobs:
         run: |
           pip install --require-hashes -r requirements/dev.lock
           pip install --no-deps -e .
-          ruff check src tests
+          ruff check src tests examples
           mypy src
           pytest
       - name: Build and check

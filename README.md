@@ -45,7 +45,7 @@ first-class test artifacts instead of checking only the final string.
 | Grading | Exact/contains/regex/similarity/JSON-contract, tool sequence and arguments, RAG citation groundedness, hallucination guard, LLM-as-judge, human scores |
 | Metrics | Task success, tool correctness, hallucination rate, latency, tokens, cost |
 | CI gates | Absolute thresholds and regression limits against a baseline, auto-resolved per branch |
-| Workflows | Run, A/B test two agents, compare runs, re-grade a recorded run without calling the agent |
+| Workflows | Run, A/B test two agents, compare runs, per-task results with full transcripts, re-grade a recorded run without calling the agent |
 | Storage | JSON run artifacts, optionally mirrored to Postgres |
 | API | FastAPI service with auth, CORS allowlist, rate limiting, structured JSON logs |
 
@@ -431,6 +431,7 @@ All settings are environment variables, and all are optional.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): development setup, tests, and lockfiles
 - [RELEASING.md](RELEASING.md): publishing new versions (maintainers)
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release
 
 ## Roadmap
 

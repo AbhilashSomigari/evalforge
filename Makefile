@@ -12,7 +12,7 @@ test:
 	pytest
 
 lint:
-	ruff check src tests
+	ruff check src tests examples
 	mypy src
 
 demo:

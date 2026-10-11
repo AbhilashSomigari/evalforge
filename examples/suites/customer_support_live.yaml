@@ -1,6 +1,7 @@
 name: customer-support-live
 description: >-
-  Customer-support suite for real LLM agents (examples/agents/openai_agent.py).
+  Customer-support suite for real LLM agents (examples/agents/claude_agent.py,
+  examples/agents/openai_agent.py).
   The two happy-path tasks from customer_support.yaml plus edge cases: unknown
   and missing order IDs, pressure to over-promise or skip checks, an inflated
   refund amount, and a multi-order request.
