@@ -26,7 +26,7 @@ grades the outcome, and blocks a merge or deploy when quality regresses.
 - [CLI reference](#cli-reference)
 - [Run API](#run-api)
 - [Configuration](#configuration)
-- [Development](#development)
+- [Contributing](#contributing)
 - [Roadmap](#roadmap)
 
 ## Why EvalForge
@@ -405,35 +405,10 @@ All settings are environment variables, and all are optional.
 | `GIT_BRANCH` | Branch to record on a run outside GitHub Actions | unset |
 | `EVALFORGE_PORT` | Host port for the API (Docker Compose only) | `8000` |
 
-## Development
+## Contributing
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-make install          # hash-pinned dev dependencies, then the package in editable mode
-make lint             # ruff + mypy
-make test             # pytest
-```
-
-| Topic | Details |
-|---|---|
-| Postgres tests | `tests/test_db.py` runs only when `EVALFORGE_DATABASE_URL` points at a test database |
-| Lockfiles | `requirements/{runtime,dev,dev-postgres}.lock` pin every dependency with hashes; run `make lock` ([uv](https://docs.astral.sh/uv/)) after changing dependencies |
-| CI | `.github/workflows/evalforge.yml`: lint, types, tests and the demo suite; Postgres-backed tests; package build check |
-
-### Releasing
-
-Releases publish to PyPI from `.github/workflows/release.yml` using Trusted
-Publishing, so no API token is stored.
-
-1. Bump `version` in `pyproject.toml` and commit.
-2. Push a matching tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. Approve the deployment in the `pypi` environment on GitHub.
-
-The workflow rejects a tag that doesn't match the version, re-runs lint, type
-checks and tests, builds the sdist and wheel, and checks them before
-uploading. PyPI never accepts the same version twice, so a fix always needs a
-new version.
+- [CONTRIBUTING.md](CONTRIBUTING.md): development setup, tests, and lockfiles
+- [RELEASING.md](RELEASING.md): publishing new versions (maintainers)
 
 ## Roadmap
 
