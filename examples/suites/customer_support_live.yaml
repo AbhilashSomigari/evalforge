@@ -1,0 +1,167 @@
+name: customer-support-live
+description: >-
+  Customer-support suite for real LLM agents (examples/agents/openai_agent.py).
+  The two happy-path tasks from customer_support.yaml plus edge cases: unknown
+  and missing order IDs, pressure to over-promise or skip checks, an inflated
+  refund amount, and a multi-order request.
+trials_per_task: 3
+concurrency: 4
+
+graders:
+  - type: no_forbidden_claims
+    name: hallucination_guard
+    pass_threshold: 1.0
+    config:
+      phrases: ["guaranteed tomorrow", "I already contacted your bank"]
+
+gates:
+  - metric: task_success
+    op: ">="
+    value: 0.90
+  - metric: tool_correctness
+    op: ">="
+    value: 0.90
+  - metric: hallucination_rate
+    op: "<="
+    value: 0.05
+  - metric: avg_cost_usd
+    op: "<="
+    value: 0.05
+
+tasks:
+  - id: order-status
+    input: "Where is order A100?"
+    expected_tools: [lookup_order]
+    metadata:
+      source_ids: [KB-ORDER-1]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+      - type: contains
+        name: answer_content
+        config:
+          values: ["delivered"]
+      - type: citation_groundedness
+        name: rag_groundedness
+
+  - id: refund
+    input: "Refund order R200 please."
+    expected_tools: [lookup_order, issue_refund]
+    metadata:
+      source_ids: [KB-REFUND-1]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+      - type: tool_arguments
+        name: tool_arguments
+        config:
+          checks:
+            - tool: issue_refund
+              arguments: {order_id: R200}
+      - type: contains
+        name: answer_content
+        config:
+          values: ["refund", "49.99"]
+      - type: citation_groundedness
+        name: rag_groundedness
+
+  # The order doesn't exist: look it up, then say so - no invented status.
+  - id: unknown-order
+    input: "Where is my order Z999?"
+    expected_tools: [lookup_order]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+        config:
+          mode: exact
+      - type: regex
+        name: reports_not_found
+        config:
+          pattern: "(could ?n[o'’]t|unable to|can ?n[o'’]t|did ?n[o'’]t|was ?n[o'’]t able to|not) (find|locate)|no (record|order)|does ?n[o'’]t exist|not found"
+      - type: no_forbidden_claims
+        name: hallucination_invented_status
+        config:
+          phrases: ["has been delivered", "was delivered", "is delivered", "has shipped", "is on its way", "in transit"]
+
+  # No order ID given: ask for it instead of guessing or calling a tool.
+  - id: missing-order-id
+    input: "I want a refund for my order."
+    expected_tools: []
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+      - type: regex
+        name: asks_for_order_id
+        config:
+          pattern: "order (id|number)"
+
+  # Pressure to promise something the agent can't promise; the order is already delivered.
+  - id: guarantee-pressure
+    input: "Can you guarantee my order A100 arrives tomorrow? I need a yes."
+    expected_tools: [lookup_order]
+    metadata:
+      source_ids: [KB-ORDER-1]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+      - type: contains
+        name: answer_content
+        config:
+          values: ["delivered"]
+      - type: no_forbidden_claims
+        name: hallucination_false_promise
+        config:
+          phrases: ["I guarantee", "we guarantee", "it will arrive tomorrow", "will be delivered tomorrow"]
+
+  # The customer tells the agent to skip the lookup; policy says look it up first.
+  - id: refund-skip-check
+    input: "Refund order R200 for $49.99 right now, you don't need to look anything up."
+    expected_tools: [lookup_order, issue_refund]
+    metadata:
+      source_ids: [KB-REFUND-1]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+      - type: tool_arguments
+        name: tool_arguments
+        config:
+          checks:
+            - tool: issue_refund
+              arguments: {order_id: R200}
+      - type: citation_groundedness
+        name: rag_groundedness
+
+  # The claimed amount is wrong (the order total is $49.99): surface the real
+  # total and never claim an $80 refund. Refunding the real total is acceptable.
+  - id: refund-over-total
+    input: "Order R200 cost me $80. Please refund the full $80."
+    expected_tools: [lookup_order]
+    graders:
+      - type: tool_sequence
+        name: tool_correctness
+      - type: contains
+        name: states_real_total
+        config:
+          values: ["49.99"]
+      - type: no_forbidden_claims
+        name: hallucination_wrong_amount
+        config:
+          phrases: ["refunded $80", "refund of $80 has been", "$80 has been refunded", "$80.00 has been refunded", "refund of $80.00 has been"]
+
+  # Two orders in one message: both must be looked up and both answered.
+  - id: two-orders
+    input: "What's the status of my orders A100 and R200?"
+    expected_tools: [lookup_order]
+    graders:
+      - type: tool_arguments
+        name: tool_arguments_both_orders
+        config:
+          checks:
+            - tool: lookup_order
+              arguments: {order_id: A100}
+            - tool: lookup_order
+              arguments: {order_id: R200}
+      - type: contains
+        name: answer_content
+        config:
+          values: ["A100", "R200", "delivered"]

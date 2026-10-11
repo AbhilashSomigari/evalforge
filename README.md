@@ -173,6 +173,18 @@ never are.
 Retries are off by default because retrying re-runs any tool calls the agent
 makes. Enable them only for agents whose tools are safe to repeat.
 
+For a complete example of a real LLM agent, see
+`examples/agents/openai_agent.py`, evaluated by
+`examples/suites/customer_support_live.yaml`:
+
+```bash
+pip install openai
+export OPENAI_API_KEY=...
+evalforge run \
+  --suite examples/suites/customer_support_live.yaml \
+  --agent "python examples/agents/openai_agent.py"
+```
+
 ## Writing a suite
 
 ```yaml
