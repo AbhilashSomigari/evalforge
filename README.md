@@ -173,16 +173,21 @@ never are.
 Retries are off by default because retrying re-runs any tool calls the agent
 makes. Enable them only for agents whose tools are safe to repeat.
 
-For a complete example of a real LLM agent, see
-`examples/agents/openai_agent.py`, evaluated by
-`examples/suites/customer_support_live.yaml`:
+For complete examples of real LLM agents, see `examples/agents/`. Both share
+one system prompt, tool set, and mock order system (`support_tools.py`), so
+their scores are directly comparable on `examples/suites/customer_support_live.yaml`:
+
+| Agent | Requires | Model setting (default) |
+|---|---|---|
+| `claude_agent.py` | `pip install anthropic`, `ANTHROPIC_API_KEY` | `EVAL_CLAUDE_MODEL` (`claude-opus-5-5`), `EVAL_CLAUDE_EFFORT` (`medium`) |
+| `openai_agent.py` | `pip install openai`, `OPENAI_API_KEY` | `EVAL_OPENAI_MODEL` (`gpt-4o`) |
 
 ```bash
-pip install openai
-export OPENAI_API_KEY=...
 evalforge run \
   --suite examples/suites/customer_support_live.yaml \
-  --agent "python examples/agents/openai_agent.py"
+  --agent "python examples/agents/claude_agent.py" \
+  --out runs/claude.json
+evalforge compare --baseline runs/gpt-4o.json --candidate runs/claude.json
 ```
 
 ## Writing a suite
