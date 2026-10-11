@@ -64,7 +64,20 @@ Normal unit tests are necessary but insufficient for agents. Agents are non-dete
                     └─────────────────────┘
 ```
 
+## Install
+
+```bash
+pip install evalforge-agents                # CLI + API, file-backed run storage
+pip install "evalforge-agents[postgres]"    # + optional Postgres run storage
+```
+
+Requires Python 3.11+. The distribution is `evalforge-agents`; the CLI command
+is `evalforge` and the import package is `evalforge_agents` (the unrelated
+`evalforge` package on PyPI is a different project).
+
 ## Run it
+
+From a clone of this repo (for the bundled example suite and demo agent):
 
 ```bash
 python -m venv .venv
