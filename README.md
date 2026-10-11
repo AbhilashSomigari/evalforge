@@ -340,7 +340,8 @@ Without one of these, every regression gate fails with `no baseline`.
 |---|---|
 | `evalforge run --suite S (--agent CMD \| --url URL) [--out F] [--baseline F \| --baseline-branch B] [--retries N]` | Run a suite and enforce its gates |
 | `evalforge ab --suite S --agent-a CMD --agent-b CMD [--out-dir D]` | Run one suite against two agents and print metric deltas |
-| `evalforge compare --baseline F --candidate F` | Show metric deltas between two runs |
+| `evalforge show F [--task ID] [--json]` | Per-task results: pass rate, latency, cost, tool-call sequences, failing graders; `--task` shows every trial's tool calls, failed grades, and full answer |
+| `evalforge compare --baseline F --candidate F` | Show metric deltas and per-task pass-rate changes between two runs |
 | `evalforge replay --suite S --run F [--out F]` | Re-grade a recorded run without calling the agent |
 | `evalforge inspect F` | Print a run as compact JSON |
 | `evalforge serve [--host H] [--port P]` | Start the run API |
@@ -352,6 +353,10 @@ Without one of these, every regression gate fails with `no baseline`.
 | `2` | At least one gate failed; this is what blocks a CI job |
 
 Every run is saved, even when its gates fail.
+
+The summary metrics average across tasks, so a model can gain on one task and
+lose on another without the totals moving. `evalforge show` and the per-task
+table in `evalforge compare` make that visible.
 
 ## Run API
 

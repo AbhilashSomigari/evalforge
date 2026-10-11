@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, NoReturn
 
 import typer
 import yaml
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from evalforge_agents import db
 from evalforge_agents.adapters import CommandAgentAdapter, HttpAgentAdapter
+from evalforge_agents.breakdown import TaskStats, compare_tasks, task_breakdown, trials_by_task
 from evalforge_agents.config import load_suite
 from evalforge_agents.graders import run_grader
 from evalforge_agents.logging_utils import configure_logging
@@ -284,6 +287,127 @@ def compare(
         if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
             table.add_row(field, f"{av:.4f}", f"{bv:.4f}", f"{bv-av:+.4f}")
     console.print(table)
+
+    tasks = Table(title="Per-task pass rate")
+    tasks.add_column("Task", no_wrap=True)
+    tasks.add_column("Baseline", justify="right")
+    tasks.add_column("Candidate", justify="right")
+    tasks.add_column("Change", justify="right")
+    for pair in compare_tasks(a, b):
+        delta = pair.pass_rate_delta
+        style = None if delta == 0 else ("red" if delta is not None and delta < 0 else "yellow")
+        tasks.add_row(
+            pair.task_id,
+            _passed_cell(pair.baseline),
+            _passed_cell(pair.candidate),
+            "-" if delta is None else f"{delta:+.0%}",
+            style=style,
+        )
+    console.print(tasks)
+
+
+def _passed_cell(stats: TaskStats | None) -> str:
+    if stats is None:
+        return "-"
+    return f"{stats.passed}/{stats.trials} ({stats.pass_rate:.0%})"
+
+
+def _tool_sequences_cell(stats: TaskStats) -> str:
+    lines = []
+    for sequence, count in stats.tool_sequences:
+        text = " -> ".join(sequence) or "(no tools)"
+        lines.append(text if len(stats.tool_sequences) == 1 else f"{text} ({count}/{stats.trials})")
+    return "\n".join(lines)
+
+
+def _failing_cell(stats: TaskStats) -> str:
+    lines = [f"{g.name} {g.pass_rate:.0%}" for g in stats.failing_graders]
+    if stats.errors:
+        lines.append(f"{stats.errors} trial error(s)")
+    return "\n".join(lines) or "-"
+
+
+def _compact(value: object, limit: int = 140) -> str:
+    text = json.dumps(value, default=str)
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _print_task_trials(run: EvalRun, task_id: str) -> None:
+    grouped = trials_by_task(run)
+    trials = grouped.get(task_id)
+    if trials is None:
+        _fail(f"no task {task_id!r} in this run; tasks: {', '.join(grouped)}")
+    console.print(f"[bold]{escape(task_id)}[/bold] · {run.suite_name} · {_describe_run(run)}")
+    for trial in trials:
+        verdict = "[green]PASS[/green]" if trial.success else "[red]FAIL[/red]"
+        console.print(
+            f"\n[bold]Trial {trial.trial_index}[/bold] {verdict}  "
+            f"{trial.latency_ms:.0f} ms · ${trial.output.usage.cost_usd:.4f}"
+        )
+        if trial.error:
+            console.print(f"  [red]error:[/red] {escape(trial.error)}")
+        for call in trial.output.tool_calls:
+            outcome = f"error: {call.error}" if call.error else _compact(call.result)
+            console.print(f"  tool  {escape(call.name)}({escape(_compact(call.arguments))}) -> {escape(outcome)}")
+        for grade in trial.grades:
+            if not grade.passed:
+                console.print(f"  [red]failed[/red] {escape(grade.grader)} {grade.score:.2f}: {escape(grade.reason)}")
+        console.print(f"  answer: {escape(trial.output.output) or '[dim](empty)[/dim]'}")
+
+
+@app.command()
+def show(
+    run_file: Annotated[Path, typer.Argument(exists=True, readable=True)],
+    task: Annotated[str | None, typer.Option("--task", help="Show every trial of one task")]=None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print machine-readable JSON")]=False,
+) -> None:
+    """Show per-task results: pass rates, tool sequences, failing graders."""
+    run = _load_run(run_file)
+    if task is not None:
+        if as_json:
+            trials = trials_by_task(run).get(task)
+            if trials is None:
+                _fail(f"no task {task!r} in this run")
+            print(json.dumps([t.model_dump(mode="json") for t in trials], indent=2))
+            return
+        _print_task_trials(run, task)
+        return
+
+    stats = task_breakdown(run)
+    if as_json:
+        print(json.dumps([{**asdict(s), "pass_rate": s.pass_rate} for s in stats], indent=2))
+        return
+
+    table = Table(
+        title=f"Per-task results · {run.suite_name}",
+        caption="Failing graders show each grader's pass rate on that task.",
+    )
+    table.add_column("Task", no_wrap=True)
+    # Task IDs stay whole so they can be copied into --task.
+    table.add_column("Passed", justify="right")
+    table.add_column("Avg latency", justify="right")
+    table.add_column("Avg cost", justify="right")
+    table.add_column("Tool calls", overflow="fold")
+    table.add_column("Failing graders", overflow="fold")
+    for s in stats:
+        style = None if s.pass_rate == 1 else ("red" if s.pass_rate == 0 else "yellow")
+        table.add_row(
+            s.task_id,
+            _passed_cell(s),
+            f"{s.avg_latency_ms:.0f} ms",
+            f"${s.avg_cost_usd:.4f}",
+            escape(_tool_sequences_cell(s)),
+            escape(_failing_cell(s)),
+            style=style,
+        )
+    console.print(f"{_describe_run(run)}")
+    console.print(table)
+    passed = sum(s.passed for s in stats)
+    trials_total = sum(s.trials for s in stats)
+    console.print(
+        f"{passed}/{trials_total} trials passed across {len(stats)} tasks. "
+        "Use --task ID to see every trial of one task."
+    )
 
 
 @app.command()

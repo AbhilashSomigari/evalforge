@@ -311,3 +311,80 @@ def test_ab_runs_both_variants(tmp_path):
     assert result.exit_code == 0, result.output
     assert (out_dir / "variant-a.json").exists()
     assert (out_dir / "variant-b.json").exists()
+
+
+def test_show_prints_per_task_table(tmp_path):
+    out = tmp_path / "run.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
+    result = runner.invoke(app, ["show", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "order-status" in result.output and "refund" in result.output
+    assert "2/2 (100%)" in result.output
+    assert "4/4 trials passed across 2 tasks" in result.output
+
+
+def test_show_task_lists_every_trial_with_tools_and_answer(tmp_path):
+    out = tmp_path / "run.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
+    result = runner.invoke(app, ["show", str(out), "--task", "refund"])
+    assert result.exit_code == 0, result.output
+    assert result.output.count("Trial ") == 2
+    assert "issue_refund" in result.output
+    assert "answer: Refund submitted" in result.output
+
+
+def test_show_unknown_task_is_a_clean_error(tmp_path):
+    out = tmp_path / "run.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
+    result = runner.invoke(app, ["show", str(out), "--task", "nope"])
+    assert result.exit_code == 1
+    assert "no task 'nope'" in result.output
+
+
+def test_show_json_is_machine_readable(tmp_path):
+    out = tmp_path / "run.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
+    result = runner.invoke(app, ["show", str(out), "--json"])
+    assert result.exit_code == 0, result.output
+    rows = json.loads(result.stdout)
+    assert {r["task_id"] for r in rows} == {"order-status", "refund"}
+    assert all(r["pass_rate"] == 1.0 for r in rows)
+
+
+def test_show_highlights_failures_and_prints_answers_literally(tmp_path):
+    # A failing trial must surface its grader, and model output containing
+    # Rich markup ("[bold]") must be printed as text, not interpreted.
+    from evalforge_agents.models import AgentOutput, EvalRun, GradeResult, RunSummary, TrialResult
+    from evalforge_agents.storage import save_run
+
+    run = EvalRun(
+        suite_name="s",
+        agent_name="a",
+        summary=RunSummary(),
+        results=[
+            TrialResult(
+                task_id="t1",
+                trial_index=0,
+                output=AgentOutput(output="see [bold]this[/bold]"),
+                grades=[GradeResult(grader="answer_content", score=0.0, passed=False, reason="missing")],
+                success=False,
+            )
+        ],
+    )
+    path = tmp_path / "run.json"
+    save_run(run, path)
+    overview = runner.invoke(app, ["show", str(path)])
+    assert "answer_content 0%" in overview.output
+    assert "0/1 trials passed" in overview.output
+    detail = runner.invoke(app, ["show", str(path), "--task", "t1"])
+    assert "failed answer_content 0.00: missing" in detail.output
+    assert "see [bold]this[/bold]" in detail.output
+
+
+def test_compare_includes_per_task_pass_rates(tmp_path):
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(a)])
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(b)])
+    result = runner.invoke(app, ["compare", "--baseline", str(a), "--candidate", str(b)])
+    assert "Per-task pass rate" in result.output
+    assert "order-status" in result.output
