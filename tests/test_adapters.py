@@ -6,9 +6,9 @@ import textwrap
 import httpx
 import pytest
 
-from evalforge.adapters.command import CommandAgentAdapter
-from evalforge.adapters.http import HttpAgentAdapter
-from evalforge.models import TaskSpec
+from evalforge_agents.adapters.command import CommandAgentAdapter
+from evalforge_agents.adapters.http import HttpAgentAdapter
+from evalforge_agents.models import TaskSpec
 
 PYTHON = sys.executable
 

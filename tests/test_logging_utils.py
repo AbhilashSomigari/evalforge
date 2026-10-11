@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from evalforge.logging_utils import (
+from evalforge_agents.logging_utils import (
     JsonFormatter,
     configure_logging,
     get_logger,
@@ -19,11 +19,11 @@ from evalforge.logging_utils import (
 @pytest.fixture(autouse=True)
 def _reset_evalforge_logger():
     # Other tests (e.g. the CLI ones) call configure_logging(), which sets
-    # propagate=False on the "evalforge" logger so it doesn't double-log
+    # propagate=False on the "evalforge_agents" logger so it doesn't double-log
     # through root in real use. That's correct for production but would
     # silently stop caplog (attached at the root logger) from seeing anything
     # logged here, depending on what ran earlier in the same test session.
-    logger = logging.getLogger("evalforge")
+    logger = logging.getLogger("evalforge_agents")
     saved_handlers, saved_propagate, saved_level = logger.handlers[:], logger.propagate, logger.level
     logger.handlers = []
     logger.propagate = True
@@ -33,7 +33,7 @@ def _reset_evalforge_logger():
     logger.level = saved_level
 
 
-def _make_record(logger_name: str = "evalforge.test") -> logging.LogRecord:
+def _make_record(logger_name: str = "evalforge_agents.test") -> logging.LogRecord:
     return logging.LogRecord(
         name=logger_name,
         level=logging.INFO,
@@ -46,17 +46,18 @@ def _make_record(logger_name: str = "evalforge.test") -> logging.LogRecord:
 
 
 def test_get_logger_does_not_double_prefix_module_dunder_name():
-    # __name__ inside this package is already "evalforge.xxx" (e.g. "evalforge.api"),
-    # so get_logger(__name__) must not become "evalforge.evalforge.api".
-    assert get_logger("evalforge.api").name == "evalforge.api"
-    assert get_logger("api").name == "evalforge.api"
+    # __name__ inside this package is already "evalforge_agents.xxx" (e.g.
+    # "evalforge_agents.api"), so get_logger(__name__) must not become
+    # "evalforge_agents.evalforge_agents.api".
+    assert get_logger("evalforge_agents.api").name == "evalforge_agents.api"
+    assert get_logger("api").name == "evalforge_agents.api"
 
 
 def test_format_produces_valid_json_with_core_fields():
     record = _make_record()
     parsed = json.loads(JsonFormatter().format(record))
     assert parsed["level"] == "INFO"
-    assert parsed["logger"] == "evalforge.test"
+    assert parsed["logger"] == "evalforge_agents.test"
     assert parsed["message"] == "hello"
     assert "ts" in parsed
 

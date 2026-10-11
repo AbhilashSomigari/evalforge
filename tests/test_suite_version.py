@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from evalforge.models import GateSpec, GraderSpec, SuiteSpec, TaskSpec, compute_suite_version
+from evalforge_agents.models import GateSpec, GraderSpec, SuiteSpec, TaskSpec, compute_suite_version
 
 
 def _suite(**overrides) -> SuiteSpec:

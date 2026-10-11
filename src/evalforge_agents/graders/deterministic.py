@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from difflib import SequenceMatcher
 from typing import Any
 
-from evalforge.models import AgentOutput, GradeResult, GraderSpec, TaskSpec
+from evalforge_agents.models import AgentOutput, GradeResult, GraderSpec, TaskSpec
 
 from .base import Grader
 

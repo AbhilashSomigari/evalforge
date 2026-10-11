@@ -7,8 +7,8 @@ import textwrap
 import pytest
 from typer.testing import CliRunner
 
-from evalforge import db
-from evalforge.cli import app
+from evalforge_agents import db
+from evalforge_agents.cli import app
 
 runner = CliRunner()
 AGENT_CMD = f"{sys.executable} examples/agents/demo_agent.py"
@@ -71,7 +71,7 @@ def test_run_is_saved_even_when_gate_evaluation_raises(tmp_path, monkeypatch):
     def boom(*args, **kwargs):
         raise ValueError("simulated gate failure")
 
-    monkeypatch.setattr("evalforge.cli.evaluate_gates", boom)
+    monkeypatch.setattr("evalforge_agents.cli.evaluate_gates", boom)
     out = tmp_path / "r.json"
     result = runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(out)])
     assert result.exit_code == 1

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from evalforge.models import AgentOutput, GradeResult, GraderSpec, TaskSpec
+from evalforge_agents.models import AgentOutput, GradeResult, GraderSpec, TaskSpec
 
 
 class Grader(ABC):

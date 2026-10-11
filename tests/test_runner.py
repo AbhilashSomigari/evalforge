@@ -1,8 +1,8 @@
 import pytest
 
-from evalforge.adapters.base import AgentAdapter
-from evalforge.models import AgentOutput, GraderSpec, SuiteSpec, TaskSpec, ToolCall
-from evalforge.runner import EvalRunner
+from evalforge_agents.adapters.base import AgentAdapter
+from evalforge_agents.models import AgentOutput, GraderSpec, SuiteSpec, TaskSpec, ToolCall
+from evalforge_agents.runner import EvalRunner
 
 
 class FakeAgent(AgentAdapter):

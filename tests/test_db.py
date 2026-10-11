@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 
 pytest.importorskip("psycopg")
 
-import evalforge.api as api_module
-from evalforge import db
-from evalforge.models import EvalRun, RunSummary
+import evalforge_agents.api as api_module
+from evalforge_agents import db
+from evalforge_agents.models import EvalRun, RunSummary
 
 pytestmark = pytest.mark.skipif(
     not os.getenv(db.DATABASE_URL_ENV),
@@ -143,12 +143,12 @@ def test_fetch_run_rejects_incompatible_schema_version():
 
 
 def test_latest_run_skips_newer_incompatible_run_and_logs_it(caplog, monkeypatch):
-    monkeypatch.setattr(logging.getLogger("evalforge"), "propagate", True)
+    monkeypatch.setattr(logging.getLogger("evalforge_agents"), "propagate", True)
     compatible = _run(git_branch="main")
     db.insert_run(compatible)
     newer_incompatible = _run(git_branch="main", schema_version=0)
     db.insert_run(newer_incompatible)
-    with caplog.at_level(logging.WARNING, logger="evalforge"):
+    with caplog.at_level(logging.WARNING, logger="evalforge_agents"):
         found = db.latest_run("s", "main")
     assert found is not None and found.id == compatible.id
     assert [r.extra_fields["run_id"] for r in caplog.records] == [newer_incompatible.id]

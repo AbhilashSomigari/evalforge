@@ -5,8 +5,8 @@ from collections import defaultdict
 import pytest
 from fastapi.testclient import TestClient
 
-import evalforge.api as api_module
-from evalforge import db
+import evalforge_agents.api as api_module
+from evalforge_agents import db
 
 
 @pytest.fixture

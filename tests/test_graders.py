@@ -1,7 +1,7 @@
 import pytest
 
-from evalforge.graders import run_grader
-from evalforge.models import AgentOutput, GraderSpec, TaskSpec, ToolCall
+from evalforge_agents.graders import run_grader
+from evalforge_agents.models import AgentOutput, GraderSpec, TaskSpec, ToolCall
 
 
 @pytest.mark.asyncio

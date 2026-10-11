@@ -10,15 +10,15 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from evalforge import db
-from evalforge.adapters import CommandAgentAdapter, HttpAgentAdapter
-from evalforge.config import load_suite
-from evalforge.graders import run_grader
-from evalforge.logging_utils import configure_logging
-from evalforge.models import EvalRun, SuiteSpec, TrialResult, compute_suite_version
-from evalforge.regression import evaluate_gates
-from evalforge.runner import EvalRunner, summarize
-from evalforge.storage import find_latest_on_branch, load_run, save_run
+from evalforge_agents import db
+from evalforge_agents.adapters import CommandAgentAdapter, HttpAgentAdapter
+from evalforge_agents.config import load_suite
+from evalforge_agents.graders import run_grader
+from evalforge_agents.logging_utils import configure_logging
+from evalforge_agents.models import EvalRun, SuiteSpec, TrialResult, compute_suite_version
+from evalforge_agents.regression import evaluate_gates
+from evalforge_agents.runner import EvalRunner, summarize
+from evalforge_agents.storage import find_latest_on_branch, load_run, save_run
 
 
 def _fail(message: str) -> NoReturn:
@@ -337,4 +337,4 @@ def serve(
     """Serve the lightweight run API."""
     import uvicorn
 
-    uvicorn.run("evalforge.api:app", host=host, port=port, reload=False)
+    uvicorn.run("evalforge_agents.api:app", host=host, port=port, reload=False)

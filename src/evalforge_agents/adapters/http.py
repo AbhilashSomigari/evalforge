@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 
-from evalforge.models import AgentOutput, TaskSpec
+from evalforge_agents.models import AgentOutput, TaskSpec
 
 from .base import AgentAdapter
 

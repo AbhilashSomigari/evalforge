@@ -39,7 +39,7 @@ Repository = "https://github.com/AbhilashSomigari/evalforge"
 Issues = "https://github.com/AbhilashSomigari/evalforge/issues"
 
 [project.scripts]
-evalforge = "evalforge.cli:app"
+evalforge = "evalforge_agents.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

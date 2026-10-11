@@ -7,7 +7,7 @@ import uuid
 from contextvars import ContextVar
 
 _request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
-_ROOT_NAME = "evalforge"
+_ROOT_NAME = "evalforge_agents"
 
 
 class JsonFormatter(logging.Formatter):
@@ -65,8 +65,9 @@ def configure_logging(level: int = logging.INFO) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    # Callers pass __name__, which inside this package is already "evalforge.xxx" -
-    # don't re-prefix that case into "evalforge.evalforge.xxx".
+    # Callers pass __name__, which inside this package is already
+    # "evalforge_agents.xxx" - don't re-prefix that case into
+    # "evalforge_agents.evalforge_agents.xxx".
     if name == _ROOT_NAME or name.startswith(f"{_ROOT_NAME}."):
         return logging.getLogger(name)
     return logging.getLogger(f"{_ROOT_NAME}.{name}")

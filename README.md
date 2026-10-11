@@ -312,6 +312,32 @@ export EVALFORGE_JUDGE_MODEL=...
 
 The implementation is OpenAI-compatible so it can also point to compatible gateways/local inference servers.
 
+## Releasing
+
+The package is published to PyPI as **`evalforge-agents`** (import it as
+`evalforge_agents`; the CLI command is `evalforge`). Releases go through
+`.github/workflows/release.yml` with PyPI Trusted Publishing, so no API token
+is stored anywhere.
+
+One-time setup:
+
+1. On PyPI → *Your account* → *Publishing* → *Add a new pending publisher*:
+   project `evalforge-agents`, owner `AbhilashSomigari`, repository
+   `evalforge`, workflow `release.yml`, environment `pypi`.
+2. Optional but recommended: in the GitHub repo → *Settings* →
+   *Environments* → `pypi`, add yourself as a required reviewer so every
+   release waits for a manual approval.
+
+Each release: bump `version` in `pyproject.toml`, commit, then push a
+matching tag — the workflow refuses a tag that doesn't match:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+It re-runs lint, type checks and tests, builds the sdist and wheel, checks
+them with `twine check --strict`, then uploads.
+
 ## What comes next
 
 The next platform milestones are: distributed workers; human review queues; richer LLM/NLI groundedness graders; environment snapshots and state-based outcome grading; provider-native OpenAI/Anthropic adapters; statistical confidence intervals; flaky-eval detection; prompt/model matrix experiments; GitHub PR annotations; and an observability UI built on the same run schema.

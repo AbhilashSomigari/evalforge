@@ -4,8 +4,8 @@ import json
 import logging
 from pathlib import Path
 
-from evalforge.logging_utils import get_logger, log
-from evalforge.models import CURRENT_SCHEMA_VERSION, EvalRun
+from evalforge_agents.logging_utils import get_logger, log
+from evalforge_agents.models import CURRENT_SCHEMA_VERSION, EvalRun
 
 logger = get_logger(__name__)
 

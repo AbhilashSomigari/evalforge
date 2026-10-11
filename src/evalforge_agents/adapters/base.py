@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from evalforge.models import AgentOutput, TaskSpec
+from evalforge_agents.models import AgentOutput, TaskSpec
 
 
 class AgentAdapter(ABC):

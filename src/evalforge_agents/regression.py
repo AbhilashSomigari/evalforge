@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from evalforge.models import EvalRun, GateSpec
+from evalforge_agents.models import EvalRun, GateSpec
 
 
 @dataclass

@@ -5,10 +5,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-import evalforge.api as api_module
-from evalforge import db
-from evalforge.models import EvalRun, RunSummary
-from evalforge.storage import save_run
+import evalforge_agents.api as api_module
+from evalforge_agents import db
+from evalforge_agents.models import EvalRun, RunSummary
+from evalforge_agents.storage import save_run
 
 
 @pytest.fixture

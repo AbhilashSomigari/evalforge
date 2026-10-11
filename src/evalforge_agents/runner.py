@@ -6,10 +6,10 @@ import os
 import time
 from statistics import mean
 
-from evalforge.adapters.base import AgentAdapter
-from evalforge.graders import run_grader
-from evalforge.logging_utils import get_logger, log
-from evalforge.models import (
+from evalforge_agents.adapters.base import AgentAdapter
+from evalforge_agents.graders import run_grader
+from evalforge_agents.logging_utils import get_logger, log
+from evalforge_agents.models import (
     EvalRun,
     GradeResult,
     RunSummary,
@@ -50,7 +50,7 @@ class EvalRunner:
                 )
             except Exception as exc:  # noqa: BLE001 - capture failures, don't kill the suite
                 latency_ms = (time.perf_counter() - started) * 1000
-                from evalforge.models import AgentOutput
+                from evalforge_agents.models import AgentOutput
 
                 log(
                     logger,

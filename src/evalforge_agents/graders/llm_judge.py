@@ -5,7 +5,7 @@ import os
 
 import httpx
 
-from evalforge.models import AgentOutput, GradeResult, GraderSpec, TaskSpec
+from evalforge_agents.models import AgentOutput, GradeResult, GraderSpec, TaskSpec
 
 from .base import Grader
 

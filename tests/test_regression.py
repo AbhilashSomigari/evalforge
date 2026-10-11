@@ -1,7 +1,7 @@
 import pytest
 
-from evalforge.models import EvalRun, GateSpec, RunSummary
-from evalforge.regression import evaluate_gates
+from evalforge_agents.models import EvalRun, GateSpec, RunSummary
+from evalforge_agents.regression import evaluate_gates
 
 
 def run(success: float, cost: float = 0.1) -> EvalRun:

@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from evalforge.models import EvalRun, RunSummary
-from evalforge.storage import find_latest_on_branch, load_run, save_run, try_load_run
+from evalforge_agents.models import EvalRun, RunSummary
+from evalforge_agents.storage import find_latest_on_branch, load_run, save_run, try_load_run
 
 
 def _run(**overrides) -> EvalRun:
@@ -67,7 +67,7 @@ def test_find_latest_on_branch_skips_unreadable_files(tmp_path):
 def _evalforge_logs_propagate(monkeypatch):
     # configure_logging() (called by CLI tests earlier in the session) turns
     # propagation off, which would hide these records from caplog.
-    monkeypatch.setattr(logging.getLogger("evalforge"), "propagate", True)
+    monkeypatch.setattr(logging.getLogger("evalforge_agents"), "propagate", True)
 
 
 def test_try_load_run_logs_why_a_file_was_skipped(tmp_path, caplog, _evalforge_logs_propagate):
@@ -75,7 +75,7 @@ def test_try_load_run_logs_why_a_file_was_skipped(tmp_path, caplog, _evalforge_l
     data = json.loads(_run().model_dump_json())
     data["schema_version"] = 0
     path.write_text(json.dumps(data))
-    with caplog.at_level(logging.WARNING, logger="evalforge"):
+    with caplog.at_level(logging.WARNING, logger="evalforge_agents"):
         assert try_load_run(path) is None
     [record] = caplog.records
     assert record.message == "skipping unreadable run file"
@@ -88,7 +88,7 @@ def test_find_latest_on_branch_warns_instead_of_silently_skipping(
 ):
     save_run(_run(suite_name="s", git_branch="main"), tmp_path / "ok.json")
     (tmp_path / "list.json").write_text("[]")  # valid JSON, but not a run object
-    with caplog.at_level(logging.WARNING, logger="evalforge"):
+    with caplog.at_level(logging.WARNING, logger="evalforge_agents"):
         found = find_latest_on_branch(tmp_path, "s", "main")
     assert found is not None
     assert [r.extra_fields["path"] for r in caplog.records] == [str(tmp_path / "list.json")]

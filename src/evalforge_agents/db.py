@@ -7,9 +7,9 @@ import threading
 import time
 from typing import Any
 
-from evalforge.logging_utils import get_logger, log
-from evalforge.models import CURRENT_SCHEMA_VERSION, EvalRun
-from evalforge.storage import parse_run
+from evalforge_agents.logging_utils import get_logger, log
+from evalforge_agents.models import CURRENT_SCHEMA_VERSION, EvalRun
+from evalforge_agents.storage import parse_run
 
 DATABASE_URL_ENV = "EVALFORGE_DATABASE_URL"
 POOL_MAX_SIZE_ENV = "EVALFORGE_DB_POOL_MAX_SIZE"

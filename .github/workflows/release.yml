@@ -1,0 +1,62 @@
+name: Release to PyPI
+
+# Publishes evalforge-agents when a version tag (e.g. v0.1.0) is pushed.
+# Uses PyPI Trusted Publishing (OIDC): no API token is stored anywhere. The
+# PyPI project must list this repo + workflow + the "pypi" environment as a
+# trusted publisher before the first release (see README "Releasing").
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Tag must match the package version
+        run: |
+          version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match pyproject.toml version $version" >&2
+            exit 1
+          fi
+      - name: Lint, type check, test
+        run: |
+          pip install --require-hashes -r requirements/dev.lock
+          pip install --no-deps -e .
+          ruff check src tests
+          mypy src
+          pytest
+      - name: Build and check
+        run: |
+          pip install build==1.6.1 twine==7.0.0
+          python -m build
+          twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    # Add required reviewers to this environment in the repo settings to make
+    # every release wait for a manual approval before anything is uploaded.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/evalforge-agents
+    permissions:
+      id-token: write  # OIDC token for Trusted Publishing; nothing else
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      # Pinned by commit: this is the step that can publish under the project.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
