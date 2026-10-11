@@ -1,35 +1,90 @@
-# EvalForge — CI/CD for AI Agents
+# EvalForge
 
-EvalForge is an infrastructure-first evaluation harness for **tool-using, multi-step AI agents**. It turns agent behavior into repeatable tests that can run locally or in CI and block a deployment when quality regresses.
+[![PyPI](https://img.shields.io/pypi/v/evalforge-agents)](https://pypi.org/project/evalforge-agents/)
+[![CI](https://github.com/AbhilashSomigari/evalforge/actions/workflows/evalforge.yml/badge.svg)](https://github.com/AbhilashSomigari/evalforge/actions/workflows/evalforge.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> Change a prompt, model, tool schema, or RAG pipeline → run scenarios → capture trajectories → grade outcomes → compare against a baseline → enforce gates.
+**CI/CD evaluation for tool-using, multi-step AI agents.** EvalForge runs
+YAML-defined scenarios against your agent, captures the full trajectory,
+grades the outcome, and blocks a merge or deploy when quality regresses.
 
-## Why this exists
+> Change a prompt, model, tool schema, or RAG pipeline → run scenarios →
+> capture trajectories → grade outcomes → compare against a baseline →
+> enforce gates.
 
-Normal unit tests are necessary but insufficient for agents. Agents are non-deterministic, make multiple model calls, use tools, retrieve context, and mutate environments. EvalForge treats the **trajectory and outcome** as first-class test artifacts instead of evaluating only the final string.
+## Contents
 
-## v0.1 capabilities
+- [Why EvalForge](#why-evalforge)
+- [Features](#features)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Connecting an agent](#connecting-an-agent)
+- [Writing a suite](#writing-a-suite)
+- [Graders](#graders)
+- [Gates and baselines](#gates-and-baselines)
+- [CLI reference](#cli-reference)
+- [Run API](#run-api)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Roadmap](#roadmap)
 
-- YAML evaluation suites and reusable scenarios
-- Multiple trials per task + concurrent execution
-- Language-agnostic command adapter (JSON over stdin/stdout)
-- HTTP adapter for already-running agents
-- Full trajectory/tool-call capture
-- Deterministic graders: exact match, contains, regex, similarity, JSON contract
-- Tool sequence and tool argument correctness
-- Citation-based RAG groundedness proxy
-- Known-hallucination regression guard
-- Optional OpenAI-compatible LLM-as-judge grader
-- Human-score ingestion that participates in the same pass/fail pipeline
-- Task success, tool correctness, hallucination rate, latency, token and cost aggregation
-- Baseline-vs-candidate regression comparison
-- Prompt/model A/B runs over the exact same suite
-- Absolute and regression-based CI gates
-- Trajectory replay / re-grading without paying for another agent run
-- FastAPI run-inspection API
-- Docker + GitHub Actions example
+## Why EvalForge
 
-## Architecture
+Unit tests are necessary but not sufficient for agents. Agents are
+non-deterministic, make several model calls, use tools, retrieve context, and
+change external state. EvalForge treats the **trajectory and the outcome** as
+first-class test artifacts instead of checking only the final string.
+
+## Features
+
+| Area | What you get |
+|---|---|
+| Suites | YAML tasks, multiple trials per task, concurrent execution |
+| Agents | Language-agnostic command adapter (JSON over stdin/stdout), HTTP adapter, opt-in retries with backoff |
+| Grading | Exact/contains/regex/similarity/JSON-contract, tool sequence and arguments, RAG citation groundedness, hallucination guard, LLM-as-judge, human scores |
+| Metrics | Task success, tool correctness, hallucination rate, latency, tokens, cost |
+| CI gates | Absolute thresholds and regression limits against a baseline, auto-resolved per branch |
+| Workflows | Run, A/B test two agents, compare runs, re-grade a recorded run without calling the agent |
+| Storage | JSON run artifacts, optionally mirrored to Postgres |
+| API | FastAPI service with auth, CORS allowlist, rate limiting, structured JSON logs |
+
+## Install
+
+```bash
+pip install evalforge-agents
+pip install "evalforge-agents[postgres]"   # optional Postgres run storage
+```
+
+Requires Python 3.11+.
+
+| Name | Value |
+|---|---|
+| PyPI distribution | `evalforge-agents` |
+| CLI command | `evalforge` |
+| Import package | `evalforge_agents` |
+
+The `evalforge` package on PyPI is an unrelated project.
+
+## Quick start
+
+The repository includes an example suite and a demo agent:
+
+```bash
+git clone https://github.com/AbhilashSomigari/evalforge.git
+cd evalforge
+pip install evalforge-agents
+
+evalforge run \
+  --suite examples/suites/customer_support.yaml \
+  --agent "python examples/agents/demo_agent.py" \
+  --out runs/demo.json
+```
+
+The command prints a metrics table and a CI gates table, and writes the full
+run artifact to `runs/demo.json`.
+
+## How it works
 
 ```text
                    ┌────────────────────────┐
@@ -64,46 +119,41 @@ Normal unit tests are necessary but insufficient for agents. Agents are non-dete
                     └─────────────────────┘
 ```
 
-## Install
+**The run artifact is the product.** Every trial stores the task, the output,
+tool calls, trajectory, grader results, latency, usage, and cost. CI gates,
+the API, dashboards, and human review all read the same versioned JSON object
+(`schema_version`).
 
-```bash
-pip install evalforge-agents                # CLI + API, file-backed run storage
-pip install "evalforge-agents[postgres]"    # + optional Postgres run storage
+## Connecting an agent
+
+EvalForge doesn't require any agent framework. The same suite can evaluate
+Python, TypeScript, Java, Go, MCP-based agents, or remote services.
+
+**Command adapter** (`--agent "<command>"`): EvalForge starts the command once
+per trial, writes one `TaskSpec` JSON object to stdin, and reads one
+`AgentOutput` JSON object from stdout. A non-zero exit code, invalid JSON, or a
+timeout (120 s) fails the trial.
+
+**HTTP adapter** (`--url <endpoint>`): EvalForge `POST`s the `TaskSpec` JSON to
+the endpoint and expects an `AgentOutput` JSON response. With `--retries`,
+timeouts, connection errors, and 5xx responses are retried; 4xx responses
+never are.
+
+`TaskSpec` (input):
+
+```json
+{
+  "id": "refund",
+  "input": "Refund order R200 please.",
+  "expected_output": null,
+  "expected_tools": ["lookup_order", "issue_refund"],
+  "context": [],
+  "metadata": {"order_id": "R200"},
+  "graders": []
+}
 ```
 
-Requires Python 3.11+. The distribution is `evalforge-agents`; the CLI command
-is `evalforge` and the import package is `evalforge_agents` (the unrelated
-`evalforge` package on PyPI is a different project).
-
-## Run it
-
-From a clone of this repo (for the bundled example suite and demo agent):
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-make install      # hash-pinned deps from requirements/dev.lock, then the package itself
-pytest
-
-evalforge run \
-  --suite examples/suites/customer_support.yaml \
-  --agent "python examples/agents/demo_agent.py" \
-  --out runs/demo.json
-```
-
-A failing gate exits with code `2`, which is what blocks a CI job. Invalid
-input — a malformed suite, an unknown gate metric, an unreadable run file —
-exits with code `1` and a one-line error, before any agent is called where
-possible.
-
-Dependencies are pinned with hashes in `requirements/*.lock` (runtime, dev,
-dev+postgres), used by CI and the Docker image. After changing dependencies in
-`pyproject.toml`, regenerate them with `make lock` (needs
-[uv](https://docs.astral.sh/uv/)).
-
-## Agent protocol
-
-EvalForge deliberately does **not** force a LangChain/LlamaIndex/custom-agent dependency. For the command adapter, your executable receives one `TaskSpec` JSON object on stdin and returns one `AgentOutput` JSON object on stdout:
+`AgentOutput` (response):
 
 ```json
 {
@@ -115,23 +165,26 @@ EvalForge deliberately does **not** force a LangChain/LlamaIndex/custom-agent de
   "tool_calls": [
     {"name": "lookup_order", "arguments": {"order_id": "R200"}}
   ],
-  "usage": {
-    "input_tokens": 100,
-    "output_tokens": 35,
-    "cost_usd": 0.012
-  },
+  "usage": {"input_tokens": 100, "output_tokens": 35, "cost_usd": 0.012},
   "model": "your-model"
 }
 ```
 
-That adapter boundary lets the same suite evaluate Python, TypeScript, Java, Go, MCP-based agents, or remote services.
+Retries are off by default because retrying re-runs any tool calls the agent
+makes. Enable them only for agents whose tools are safe to repeat.
 
-## Suite example
+## Writing a suite
 
 ```yaml
 name: checkout-agent
 trials_per_task: 3
 concurrency: 8
+
+graders:                      # applied to every task
+  - type: no_forbidden_claims
+    name: hallucination_guard
+    config:
+      phrases: ["guaranteed tomorrow"]
 
 gates:
   - metric: task_success
@@ -148,76 +201,59 @@ tasks:
   - id: refund-order
     input: Refund order R200.
     expected_tools: [lookup_order, issue_refund]
-    graders:
+    metadata:
+      source_ids: [KB-REFUND-1]
+    graders:                  # applied to this task only
       - type: tool_sequence
         name: tool_correctness
-        pass_threshold: 1.0
 ```
 
-For a regression gate, provide a baseline. A quality metric with `op: ">="` is allowed to drop by at most `max_regression`; a cost/latency metric with `op: "<="` is allowed to rise by at most that amount. A regression gate with no baseline to compare against **fails** (shown as `no baseline` in the gates table) — it can't pass without one.
+| Suite field | Default | Meaning |
+|---|---|---|
+| `name` | required | Suite name; runs and baselines are grouped by it |
+| `trials_per_task` | `1` | Runs per task, for measuring non-determinism |
+| `concurrency` | `4` | Trials executed in parallel |
+| `graders` | `[]` | Graders applied to every task |
+| `gates` | `[]` | CI gates evaluated on the run summary |
+| `tasks` | required | `id`, `input`, and optional `expected_output`, `expected_tools`, `context`, `metadata`, `graders` |
 
-```bash
-evalforge run --suite examples/suites/customer_support.yaml --agent "..." \
-  --out runs/pr-184.json --baseline-branch main
+A trial passes when every grader that applies to it reaches its
+`pass_threshold` (default `1.0`).
+
+## Graders
+
+| Type | Checks | Config |
+|---|---|---|
+| `exact_match` | Output equals the expected text | `expected` (or task `expected_output`), `case_sensitive` |
+| `contains` | Output contains each value | `values` (or `expected`) |
+| `regex` | Output matches a pattern | `pattern` |
+| `similarity` | Sequence similarity to a reference | `expected` (or task `expected_output`) |
+| `json_contract` | Output is a JSON object with required keys | `required_keys` |
+| `tool_sequence` | Tools called match the expected tools | `expected` (or task `expected_tools`), `mode`: `ordered_subsequence` (default), `exact`, `set` |
+| `tool_arguments` | Specific tool calls used specific arguments | `checks`: list of `{tool, arguments}` |
+| `citation_groundedness` | Output cites known source IDs | `source_ids` (or task `metadata.source_ids`), `require_all` |
+| `no_forbidden_claims` | Output avoids known hallucinated phrases | `phrases` |
+| `llm_judge` | An OpenAI-compatible model scores the output against a rubric | `rubric`, `model`, `base_url` |
+| `human` | Imported human review scores | `file` |
+
+### LLM-as-judge
+
+```yaml
+- type: llm_judge
+  name: policy_quality
+  pass_threshold: 0.8
+  config:
+    rubric: >-
+      Score whether the answer follows the refund policy, cites evidence,
+      and avoids claiming actions that did not occur.
 ```
 
-`--baseline-branch main` auto-resolves the baseline to the latest run of this
-suite on that branch — no more hand-tracking `runs/main.json` yourself. It
-looks in Postgres if `EVALFORGE_DATABASE_URL` is set, otherwise in `--out`'s
-directory. `GITHUB_HEAD_REF`/`GITHUB_REF_NAME` set this automatically in
-GitHub Actions; set `GIT_BRANCH` yourself elsewhere. Use `--baseline
-<path>` instead for a fixed file, same as before — the two are mutually
-exclusive. Either way, the run prints which baseline it resolved (run id,
-branch, commit, timestamp), and regression gates show the baseline value and
-delta next to each result. Run files in that directory that can't be read
-(corrupt, or from an older `schema_version`) are skipped with a logged
-warning rather than silently. If the baseline came from a suite definition that's
-since changed (a task, grader, or gate edited — not just its `description`
-or `concurrency`), you'll get a warning that the comparison may not be
-meaningful, since `evalforge` tracks a content hash (`suite_version`) of
-every run's suite on the `EvalRun` itself.
+The API key is read only from `EVALFORGE_JUDGE_API_KEY`, never from suite
+files, because suites are usually committed. `EVALFORGE_JUDGE_BASE_URL` points
+the grader at any OpenAI-compatible endpoint, including gateways and local
+inference servers. A failed judge call fails that one grade, not the run.
 
-**In CI, `--baseline-branch` needs storage that outlives the job.** Each CI
-job starts with an empty workspace, so without Postgres the `--out`
-directory never contains an earlier run and every regression gate fails with
-`no baseline`. Either set `EVALFORGE_DATABASE_URL` (as a secret) to a
-Postgres instance your CI can reach, or restore previous run files into the
-`--out` directory before running (e.g. `actions/cache` or downloading the
-main branch's last `evalforge-run` artifact).
-
-## Replay a trajectory
-
-When you improve a grader or rubric, re-score an existing run without spending tokens again:
-
-```bash
-evalforge replay \
-  --suite examples/suites/customer_support.yaml \
-  --run runs/demo.json \
-  --out runs/replayed.json
-```
-
-## Compare two runs
-
-```bash
-evalforge compare --baseline runs/main.json --candidate runs/pr-184.json
-```
-
-## Prompt/model A/B test
-
-Run the same task bank against two commands:
-
-```bash
-evalforge ab \
-  --suite examples/suites/customer_support.yaml \
-  --agent-a "python agent_prompt_v11.py" \
-  --agent-b "python agent_prompt_v12.py"
-```
-
-EvalForge stores both run artifacts and prints metric deltas. The two commands can represent different prompts, models, tool schemas, retrieval strategies, or entire agent implementations.
-
-## Human grading
-
-Human scores can be imported without changing the run pipeline:
+### Human scores
 
 ```yaml
 - type: human
@@ -234,127 +270,183 @@ Human scores can be imported without changing the run pipeline:
 }
 ```
 
-## Inspect runs over HTTP
+## Gates and baselines
+
+Each gate compares one summary metric:
+
+- `value` sets an absolute threshold, for example `task_success >= 0.9`.
+- `max_regression` limits change against a baseline run. A metric with
+  `op: ">="` may drop by at most that amount; a metric with `op: "<="` may
+  rise by at most that amount.
+
+Available metrics: `task_success`, `tool_correctness`, `grader_score`,
+`hallucination_rate`, `avg_cost_usd`, `avg_latency_ms`, `avg_input_tokens`,
+`avg_output_tokens`, `total_cost_usd`, `total_judge_input_tokens`,
+`total_judge_output_tokens`, `trials`, `failed_trials`. An unknown metric is
+rejected when the suite loads, before any agent is called.
+
+### Choosing a baseline
+
+| Option | Baseline used |
+|---|---|
+| `--baseline runs/main.json` | A fixed run file |
+| `--baseline-branch main` | The latest run of the same suite on that branch |
+
+`--baseline-branch` searches Postgres when `EVALFORGE_DATABASE_URL` is set,
+otherwise the directory of `--out`. Each run records its branch from
+`GITHUB_HEAD_REF`, `GITHUB_REF_NAME`, or `GIT_BRANCH`, in that order; GitHub
+Actions sets the first two automatically.
+
+The run prints which baseline it used, and the gates table shows the baseline
+value and delta for each regression gate. A regression gate with no baseline
+**fails** and shows `no baseline`. If the baseline was produced by a different
+suite definition, EvalForge warns that the comparison may not be meaningful.
+It detects this from a content hash of the suite (`suite_version`) that
+ignores `description` and `concurrency`.
+
+### Baselines in CI
+
+Each CI job starts with an empty workspace, so `--baseline-branch` needs run
+storage that outlives the job. Either:
+
+- set `EVALFORGE_DATABASE_URL` (as a secret) to a Postgres instance the job can
+  reach, or
+- restore earlier run files into the `--out` directory before running, for
+  example with `actions/cache` or by downloading the main branch's last run
+  artifact.
+
+Without one of these, every regression gate fails with `no baseline`.
+
+## CLI reference
+
+| Command | Purpose |
+|---|---|
+| `evalforge run --suite S (--agent CMD \| --url URL) [--out F] [--baseline F \| --baseline-branch B] [--retries N]` | Run a suite and enforce its gates |
+| `evalforge ab --suite S --agent-a CMD --agent-b CMD [--out-dir D]` | Run one suite against two agents and print metric deltas |
+| `evalforge compare --baseline F --candidate F` | Show metric deltas between two runs |
+| `evalforge replay --suite S --run F [--out F]` | Re-grade a recorded run without calling the agent |
+| `evalforge inspect F` | Print a run as compact JSON |
+| `evalforge serve [--host H] [--port P]` | Start the run API |
+
+| Exit code | Meaning |
+|---|---|
+| `0` | All gates passed |
+| `1` | Invalid input: malformed suite, unknown gate metric, unreadable run file |
+| `2` | At least one gate failed; this is what blocks a CI job |
+
+Every run is saved, even when its gates fail.
+
+## Run API
 
 ```bash
 evalforge serve --host 0.0.0.0 --port 8000
-# GET /health
-# GET /runs?limit=20&offset=0&suite=customer-support-regression
-# GET /runs/{key}
 ```
 
-Interactive FastAPI docs are available at `/docs`.
+| Endpoint | Returns |
+|---|---|
+| `GET /health` | Liveness; never requires the API key |
+| `GET /runs?limit=20&offset=0&suite=NAME` | Run summaries, paginated and filterable by suite |
+| `GET /runs/{key}` | One full run (`409` if it was written by an incompatible `schema_version`) |
+| `GET /docs` | Interactive OpenAPI docs |
 
-By default runs are read back from the local `runs/` directory (`{key}` is a
-filename). Set `EVALFORGE_DATABASE_URL` to persist runs to Postgres instead —
-`evalforge run`/`ab`/`replay` write to it in addition to the local JSON file,
-and `/runs`/`/runs/{key}` (`{key}` becomes the run id) query it directly with
-real pagination and suite filtering instead of parsing every file in `runs/`
-on every request:
-
-```bash
-export EVALFORGE_DATABASE_URL=postgresql://evalforge:evalforge@localhost:5432/evalforge
-pip install -e ".[postgres]"
-```
-
-Database connections are pooled (`EVALFORGE_DB_POOL_MAX_SIZE`, default 10).
-Runs stored under a different `schema_version` are treated the same way in
-both backends: skipped (with a logged warning) when listing or resolving a
-baseline, and a `409` with the reason from `/runs/{key}`.
-
-`docker-compose.yml` runs a Postgres container alongside the API and wires
-this automatically. It requires a `.env` file next to it:
-
-```bash
-cp .env.example .env    # then set POSTGRES_PASSWORD and EVALFORGE_API_KEY (e.g. openssl rand -hex 32)
-docker compose up --build
-```
-
-Compose refuses to start without both values, and publishes the API on
-`127.0.0.1:8000` only; put a TLS-terminating reverse proxy in front of it to
-expose it further. (If a `evalforge-db` volume already exists from an older
-setup, Postgres keeps the password it was initialized with — change it in
-the database, or remove the volume, to match `.env`.)
+Without a database, runs are read from the local `runs/` directory and
+`{key}` is a filename. With `EVALFORGE_DATABASE_URL` set, `run`, `ab`, and
+`replay` also write each run to Postgres, `{key}` is the run ID, and listing
+uses real pagination and filtering instead of scanning files.
 
 ### Securing the API
 
-The API is **open by default** — fine for `localhost`, not for anywhere else.
-Before exposing it beyond your own machine:
+The API is open by default, which is only appropriate on `localhost`. Before
+exposing it, set `EVALFORGE_API_KEY` (and, as needed, `EVALFORGE_CORS_ORIGINS`
+and `EVALFORGE_RATE_LIMIT_PER_MINUTE`; see [Configuration](#configuration)).
+
+- Clients send `Authorization: Bearer <key>`. The key is compared in constant
+  time.
+- The rate limit applies before authentication, so failed key guesses are
+  throttled too. With Postgres it is counted in the database and shared by
+  every replica; without it, each process counts separately.
+- Behind a reverse proxy, every request arrives from the proxy's IP. Rate-limit
+  at the proxy as well.
+- Every response carries an `X-Request-ID`, and each request and run is logged
+  as one JSON line on stderr. Human-readable CLI output stays on stdout.
+
+### Docker Compose
+
+`docker-compose.yml` runs the API with Postgres:
 
 ```bash
-export EVALFORGE_API_KEY=some-long-random-value      # required Authorization: Bearer <key> on /runs*
-export EVALFORGE_CORS_ORIGINS=https://your-dashboard.example  # comma-separated allowlist; unset = no cross-origin reads
-export EVALFORGE_RATE_LIMIT_PER_MINUTE=60             # per client IP; see below
+cp .env.example .env    # set POSTGRES_PASSWORD and EVALFORGE_API_KEY
+docker compose up --build
 ```
 
-The API key is compared in constant time. The rate limit is counted in
-Postgres when `EVALFORGE_DATABASE_URL` is set (a fixed one-minute window
-shared by every replica); without a database it falls back to an in-memory
-counter per process. Behind a reverse proxy every request arrives from the
-proxy's IP, so rate-limit there (or by forwarded client IP at the proxy)
-rather than relying on this per-IP limit alone.
+- Compose refuses to start unless both values are set. Generate them with
+  `openssl rand -hex 32`.
+- The API is published on `127.0.0.1` only (port `EVALFORGE_PORT`, default
+  `8000`). Put a TLS-terminating reverse proxy in front of it to expose it
+  further.
+- An existing `evalforge-db` volume keeps the password it was created with.
+  Change it in the database or remove the volume to match `.env`.
 
-`/health` never requires the API key, so container/orchestrator health checks
-keep working unauthenticated. Every request gets an `X-Request-ID` (echoed
-back if the caller sends one), and the API and runner emit one JSON log line
-per request/run to stderr — `evalforge run` keeps its human-readable table on
-stdout, so scripts piping stdout are unaffected.
+## Configuration
 
-## LLM-as-judge
+All settings are environment variables, and all are optional.
 
-Add this grader to a task or suite:
+| Variable | Purpose | Default |
+|---|---|---|
+| `EVALFORGE_DATABASE_URL` | Postgres connection URL; enables database run storage | unset (file storage only) |
+| `EVALFORGE_DB_POOL_MAX_SIZE` | Maximum pooled database connections | `10` |
+| `EVALFORGE_API_KEY` | Bearer token required on `/runs*` | unset (API open) |
+| `EVALFORGE_CORS_ORIGINS` | Comma-separated browser origins allowed to read the API | unset (no cross-origin reads) |
+| `EVALFORGE_RATE_LIMIT_PER_MINUTE` | Requests per minute per client IP | unset (no limit) |
+| `EVALFORGE_JUDGE_API_KEY` | API key for the `llm_judge` grader | unset |
+| `EVALFORGE_JUDGE_BASE_URL` | OpenAI-compatible endpoint for the judge | `https://api.openai.com/v1` |
+| `EVALFORGE_JUDGE_MODEL` | Judge model when the grader config doesn't set one | unset |
+| `EVALFORGE_HUMAN_SCORES` | Human score file when the grader config doesn't set one | unset |
+| `GIT_BRANCH` | Branch to record on a run outside GitHub Actions | unset |
+| `EVALFORGE_PORT` | Host port for the API (Docker Compose only) | `8000` |
 
-```yaml
-- type: llm_judge
-  name: policy_quality
-  pass_threshold: 0.8
-  config:
-    model: your-judge-model
-    rubric: >-
-      Score whether the answer follows the refund policy, cites evidence,
-      and avoids claiming actions that did not occur.
-```
-
-Then set:
+## Development
 
 ```bash
-export EVALFORGE_JUDGE_API_KEY=...
-export EVALFORGE_JUDGE_BASE_URL=https://api.openai.com/v1
-export EVALFORGE_JUDGE_MODEL=...
+python3.11 -m venv .venv
+source .venv/bin/activate
+make install          # hash-pinned dev dependencies, then the package in editable mode
+make lint             # ruff + mypy
+make test             # pytest
 ```
 
-The implementation is OpenAI-compatible so it can also point to compatible gateways/local inference servers.
+| Topic | Details |
+|---|---|
+| Postgres tests | `tests/test_db.py` runs only when `EVALFORGE_DATABASE_URL` points at a test database |
+| Lockfiles | `requirements/{runtime,dev,dev-postgres}.lock` pin every dependency with hashes; run `make lock` ([uv](https://docs.astral.sh/uv/)) after changing dependencies |
+| CI | `.github/workflows/evalforge.yml`: lint, types, tests and the demo suite; Postgres-backed tests; package build check |
 
-## Releasing
+### Releasing
 
-The package is published to PyPI as **`evalforge-agents`** (import it as
-`evalforge_agents`; the CLI command is `evalforge`). Releases go through
-`.github/workflows/release.yml` with PyPI Trusted Publishing, so no API token
-is stored anywhere.
+Releases publish to PyPI from `.github/workflows/release.yml` using Trusted
+Publishing, so no API token is stored.
 
-One-time setup:
+1. Bump `version` in `pyproject.toml` and commit.
+2. Push a matching tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Approve the deployment in the `pypi` environment on GitHub.
 
-1. On PyPI → *Your account* → *Publishing* → *Add a new pending publisher*:
-   project `evalforge-agents`, owner `AbhilashSomigari`, repository
-   `evalforge`, workflow `release.yml`, environment `pypi`.
-2. Optional but recommended: in the GitHub repo → *Settings* →
-   *Environments* → `pypi`, add yourself as a required reviewer so every
-   release waits for a manual approval.
+The workflow rejects a tag that doesn't match the version, re-runs lint, type
+checks and tests, builds the sdist and wheel, and checks them before
+uploading. PyPI never accepts the same version twice, so a fix always needs a
+new version.
 
-Each release: bump `version` in `pyproject.toml`, commit, then push a
-matching tag — the workflow refuses a tag that doesn't match:
+## Roadmap
 
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
+- Distributed runner workers
+- Human review queues
+- Richer LLM/NLI groundedness graders
+- Environment snapshots and state-based outcome grading
+- Provider-native OpenAI and Anthropic adapters
+- Statistical confidence intervals and flaky-eval detection
+- Prompt/model matrix experiments
+- GitHub PR annotations
+- An observability UI built on the run schema
 
-It re-runs lint, type checks and tests, builds the sdist and wheel, checks
-them with `twine check --strict`, then uploads.
+## License
 
-## What comes next
-
-The next platform milestones are: distributed workers; human review queues; richer LLM/NLI groundedness graders; environment snapshots and state-based outcome grading; provider-native OpenAI/Anthropic adapters; statistical confidence intervals; flaky-eval detection; prompt/model matrix experiments; GitHub PR annotations; and an observability UI built on the same run schema.
-
-## Design principle
-
-**The run artifact is the product.** The UI is only one consumer. Every trial stores the task, outcome-facing output, tool calls, trajectory, grader results, latency, usage and cost so the same evidence can drive CI, debugging, dashboards, human review, and future graders.
+MIT. See [LICENSE](LICENSE).
