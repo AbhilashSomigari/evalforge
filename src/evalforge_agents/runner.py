@@ -22,6 +22,14 @@ from evalforge_agents.models import (
 logger = get_logger(__name__)
 
 
+def trial_success(grades: list[GradeResult], error: str | None) -> bool:
+    """The one pass/fail rule for a trial, shared by the runner and `replay`:
+    an errored trial fails; otherwise every configured grader must pass."""
+    if error is not None:
+        return False
+    return all(g.passed for g in grades) if grades else True
+
+
 class EvalRunner:
     def __init__(self, suite: SuiteSpec, agent: AgentAdapter):
         self.suite = suite
@@ -38,8 +46,7 @@ class EvalRunner:
                 grades: list[GradeResult] = []
                 for spec in specs:
                     grades.append(await run_grader(task, output, spec))
-                # A trial passes only if every configured grader passes.
-                success = all(g.passed for g in grades) if grades else True
+                success = trial_success(grades, error=None)
                 return TrialResult(
                     task_id=task.id,
                     trial_index=trial_index,

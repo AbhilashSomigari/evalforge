@@ -204,6 +204,52 @@ def test_replay_with_a_task_missing_from_the_suite_is_a_clean_error(tmp_path):
     assert not replayed.exists()
 
 
+def test_replay_keeps_errored_trials_failed(tmp_path):
+    # An agent that crashes produces no output. no_forbidden_claims passes an
+    # empty string, so re-grading the placeholder used to turn the error into
+    # a pass (task_success 0.0 -> 1.0).
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(textwrap.dedent("""\
+        name: crashing-agent
+        graders:
+          - type: no_forbidden_claims
+            name: hallucination_guard
+            config: {phrases: ["guaranteed"]}
+        tasks:
+          - id: t1
+            input: "hello"
+        """))
+    original, replayed = tmp_path / "run.json", tmp_path / "replayed.json"
+    crash = f'{sys.executable} -c "import sys; sys.exit(1)"'
+    runner.invoke(app, ["run", "--suite", str(suite), "--agent", crash, "--out", str(original)])
+    assert json.loads(original.read_text())["results"][0]["error"]
+
+    result = runner.invoke(app, ["replay", "--suite", str(suite), "--run", str(original), "--out", str(replayed)])
+    assert result.exit_code == 0, result.output
+    data = json.loads(replayed.read_text())
+    trial = data["results"][0]
+    assert trial["success"] is False
+    assert trial["grades"] == []
+    assert data["summary"]["task_success"] == 0.0
+    assert data["summary"]["failed_trials"] == 1
+
+
+def test_replay_writes_a_new_run_linked_to_the_original(tmp_path):
+    original, replayed = tmp_path / "run.json", tmp_path / "replayed.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(original)])
+    before = original.read_text()
+
+    result = runner.invoke(app, ["replay", "--suite", SUITE, "--run", str(original), "--out", str(replayed)])
+    assert result.exit_code == 0, result.output
+    old, new = json.loads(before), json.loads(replayed.read_text())
+    assert new["id"] != old["id"]
+    assert new["metadata"]["replayed_from"] == old["id"]
+    # When and where the agent produced these outputs doesn't change.
+    assert new["created_at"] == old["created_at"]
+    assert new["git_branch"] == old["git_branch"]
+    assert original.read_text() == before
+
+
 def test_run_auto_resolves_baseline_from_branch(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_BRANCH", "main")
     first = runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(tmp_path / "first.json")])

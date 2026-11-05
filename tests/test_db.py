@@ -181,3 +181,27 @@ def test_api_rate_limit_uses_postgres_when_enabled(monkeypatch):
     assert not api_module._request_times
     with db._connect() as conn:
         assert conn.execute("SELECT sum(hits) FROM rate_limits").fetchone()[0] == 3
+
+
+def test_replay_persists_a_new_row_instead_of_overwriting_the_original(tmp_path):
+    from typer.testing import CliRunner
+
+    from evalforge_agents.cli import app
+    from evalforge_agents.storage import save_run
+
+    original = _run(task_success=0.5)
+    db.insert_run(original)
+    run_file = save_run(original, tmp_path / "run.json")
+
+    result = CliRunner().invoke(
+        app,
+        ["replay", "--suite", "examples/suites/customer_support.yaml", "--run", str(run_file),
+         "--out", str(tmp_path / "replayed.json")],
+    )
+    assert result.exit_code == 0, result.output
+    # The original row is untouched; the replay is its own row, linked back.
+    assert db.fetch_run(original.id).summary.task_success == 0.5
+    rows = db.list_runs()
+    assert len(rows) == 2
+    replay_id = next(r["id"] for r in rows if r["id"] != original.id)
+    assert db.fetch_run(replay_id).metadata["replayed_from"] == original.id

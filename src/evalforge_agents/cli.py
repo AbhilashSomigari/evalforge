@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, NoReturn
+from uuid import uuid4
 
 import typer
 import yaml
@@ -20,7 +21,7 @@ from evalforge_agents.graders import run_grader
 from evalforge_agents.logging_utils import configure_logging
 from evalforge_agents.models import EvalRun, SuiteSpec, TrialResult, compute_suite_version
 from evalforge_agents.regression import evaluate_gates
-from evalforge_agents.runner import EvalRunner, summarize
+from evalforge_agents.runner import EvalRunner, summarize, trial_success
 from evalforge_agents.storage import find_latest_on_branch, load_run, save_run
 
 
@@ -432,18 +433,30 @@ def replay(
     async def _regrade() -> EvalRun:
         rebuilt: list[TrialResult] = []
         for row in old.results:
+            if row.error is not None:
+                # The agent produced no output for this trial, so the runner
+                # recorded no grades. Grading the empty placeholder output
+                # would let graders like no_forbidden_claims pass it.
+                rebuilt.append(row)
+                continue
             task = task_map[row.task_id]
             specs = [*spec.graders, *task.graders]
             grades = [await run_grader(task, row.output, g) for g in specs]
-            rebuilt.append(row.model_copy(update={"grades": grades, "success": all(g.passed for g in grades)}))
-        # suite_version reflects the graders that produced these grades (this
-        # suite file, which may have changed since); git_sha/git_branch stay as
-        # the original run's, since replay never re-invokes the agent.
+            rebuilt.append(row.model_copy(update={"grades": grades, "success": trial_success(grades, row.error)}))
+        # A replay is a new run: with the original's id, persisting it would
+        # upsert over the original row in Postgres. suite_version reflects the
+        # graders that produced these grades (this suite file, which may have
+        # changed since). git_sha, git_branch and created_at stay the
+        # original's: they describe when and where the agent produced these
+        # outputs, and a newer created_at would let a replay of an old run
+        # displace newer real runs as the --baseline-branch baseline.
         return old.model_copy(
             update={
+                "id": str(uuid4()),
                 "results": rebuilt,
                 "summary": summarize(rebuilt),
                 "suite_version": compute_suite_version(spec),
+                "metadata": {**old.metadata, "replayed_from": old.id},
             }
         )
 
