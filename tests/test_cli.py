@@ -47,7 +47,26 @@ def test_run_saves_output_and_passes_gates(tmp_path):
 
 def test_run_requires_exactly_one_of_agent_or_url(tmp_path):
     result = runner.invoke(app, ["run", "--suite", SUITE, "--out", str(tmp_path / "r.json")])
-    assert result.exit_code != 0
+    assert result.exit_code == 1
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["run", "--nope"],  # unknown option
+        ["run"],  # missing required --suite
+        ["run", "--suite", SUITE, "--agent", "x", "--url", "http://x"],  # BadParameter
+        ["run", "--suite", SUITE, "--agent", "x", "--retries", "abc"],  # bad value
+        ["run", "--suite", "/nonexistent.yaml", "--agent", "x"],  # exists=True check
+        ["frobnicate"],  # unknown command
+    ],
+)
+def test_usage_errors_exit_1_so_exit_2_always_means_a_gate_failed(args):
+    # Click exits 2 on usage errors, which CI couldn't tell apart from a gate
+    # failure. The error message is unchanged; only the code is.
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1, result.output
+    assert "Traceback" not in result.output
 
 
 def test_regression_gate_without_baseline_fails_cleanly(tmp_path, monkeypatch):

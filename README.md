@@ -355,8 +355,8 @@ Without one of these, every regression gate fails with `no baseline`.
 | Exit code | Meaning |
 |---|---|
 | `0` | All gates passed |
-| `1` | Invalid input: malformed suite, unknown gate metric, unreadable run file |
-| `2` | At least one gate failed; this is what blocks a CI job |
+| `1` | Error: invalid usage (unknown or missing options, bad values), a malformed suite, an unknown gate metric, an unreadable run file |
+| `2` | At least one gate failed; this is what blocks a CI job. Nothing else exits `2` |
 
 Every run is saved, even when its gates fail.
 

@@ -4,6 +4,14 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 
 ## Unreleased
 
+### Changed
+
+- Exit code `2` now means only that a gate failed. Command-line usage errors
+  (an unknown or missing option, a bad value, `--agent` together with `--url`,
+  an unknown command) exit `1` like other input errors; they used to exit `2`,
+  so CI couldn't tell a blocked change from a misconfigured step. The error
+  messages are unchanged.
+
 ### Security
 
 - The `llm_judge` endpoint comes only from `EVALFORGE_JUDGE_BASE_URL`. A suite
