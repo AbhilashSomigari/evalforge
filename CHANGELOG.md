@@ -4,6 +4,8 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-05
+
 ### Changed
 
 - Exit code `2` now means only that a gate failed. Command-line usage errors
