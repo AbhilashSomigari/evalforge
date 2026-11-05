@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from evalforge_agents import db
@@ -182,6 +184,24 @@ def test_replay_regrades_without_calling_agent(tmp_path):
     result = runner.invoke(app, ["replay", "--suite", SUITE, "--run", str(original), "--out", str(replayed)])
     assert result.exit_code == 0, result.output
     assert json.loads(replayed.read_text())["summary"]["task_success"] == 1.0
+
+
+def test_replay_with_a_task_missing_from_the_suite_is_a_clean_error(tmp_path):
+    original = tmp_path / "run.json"
+    replayed = tmp_path / "replayed.json"
+    runner.invoke(app, ["run", "--suite", SUITE, "--agent", AGENT_CMD, "--out", str(original)])
+    # The same suite with one task renamed, as after editing a suite file.
+    data = yaml.safe_load(Path(SUITE).read_text())
+    data["tasks"][0]["id"] = "renamed-task"
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(yaml.safe_dump(data))
+
+    result = runner.invoke(app, ["replay", "--suite", str(suite), "--run", str(original), "--out", str(replayed)])
+    assert result.exit_code == 1
+    assert "has trials for tasks not in" in result.output
+    assert "order-status" in result.output
+    assert "Traceback" not in result.output
+    assert not replayed.exists()
 
 
 def test_run_auto_resolves_baseline_from_branch(tmp_path, monkeypatch):
