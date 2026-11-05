@@ -17,6 +17,18 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 - `examples/suites/customer_support_live.yaml`: eight customer-support tasks,
   including unknown and missing order IDs, pressure to over-promise or skip
   checks, an inflated refund amount, and a multi-order request.
+- `examples/suites/customer_support_hard.yaml`: seven harder tasks for the
+  same agents: an already-refunded order, an instruction injected through a
+  tool result, a partial refund, a customer naming the wrong item, a cancel
+  request with no cancel tool, a delivery date the tools don't provide, and a
+  refund plus a status check in one message. The mock order system gains
+  orders P300, C400, and N500 for them.
+
+### Fixed
+
+- `evalforge replay` exits with a clear error naming the missing tasks when
+  the run has trials for tasks the suite no longer contains, instead of
+  crashing with a `KeyError` traceback.
 
 ### Changed
 

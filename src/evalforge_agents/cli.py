@@ -420,6 +420,14 @@ def replay(
     spec = _load_suite(suite)
     old = _load_run(run_file)
     task_map = {t.id: t for t in spec.tasks}
+    # Fail up front instead of with a KeyError mid-regrade. Skipping these
+    # trials instead would silently change the replayed summary.
+    missing = sorted({row.task_id for row in old.results} - task_map.keys())
+    if missing:
+        _fail(
+            f"{run_file} has trials for tasks not in {suite}: {', '.join(missing)}. "
+            "Replay with the suite version that produced the run, or add the tasks back."
+        )
 
     async def _regrade() -> EvalRun:
         rebuilt: list[TrialResult] = []

@@ -175,7 +175,10 @@ makes. Enable them only for agents whose tools are safe to repeat.
 
 For complete examples of real LLM agents, see `examples/agents/`. Both share
 one system prompt, tool set, and mock order system (`support_tools.py`), so
-their scores are directly comparable on `examples/suites/customer_support_live.yaml`:
+their scores are directly comparable on `examples/suites/customer_support_live.yaml`
+and on the harder `examples/suites/customer_support_hard.yaml` (prompt
+injection through a tool result, actions the agent has no tool for, facts the
+tools don't return):
 
 | Agent | Requires | Model setting (default) |
 |---|---|---|
