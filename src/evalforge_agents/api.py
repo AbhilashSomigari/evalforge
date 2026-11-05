@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db
+from . import __version__, db
 from .logging_utils import get_logger, log, new_request_id, set_request_id
 from .models import EvalRun
 from .storage import load_run, try_load_run
@@ -47,7 +47,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     db.close_pools()
 
 
-app = FastAPI(title="EvalForge API", version="0.1.0", lifespan=_lifespan)
+app = FastAPI(title="EvalForge API", version=__version__, lifespan=_lifespan)
 RUN_DIR = Path("runs")
 
 _cors_origins = parse_cors_origins(os.getenv(CORS_ORIGINS_ENV, ""))

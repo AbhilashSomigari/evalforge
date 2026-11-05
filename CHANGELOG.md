@@ -4,6 +4,8 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 
 ## Unreleased
 
+## 0.2.0 — 2026-11-04
+
 ### Added
 
 - `evalforge show RUN`: per-task results (pass rate, latency, cost, tool-call
