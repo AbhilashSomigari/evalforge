@@ -4,6 +4,16 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 
 ## Unreleased
 
+### Fixed
+
+- `evalforge replay` no longer turns errored trials into passes. A trial whose
+  agent crashed or timed out stays failed with no grades, as `run` records it;
+  before, re-grading the empty placeholder output could pass it.
+- `evalforge replay` writes a new run instead of reusing the original's ID, so
+  with Postgres it no longer overwrites the original run. The replay records
+  the original's ID in `metadata.replayed_from` and keeps its `created_at`,
+  git SHA, and branch.
+
 ## 0.2.0 — 2026-11-04
 
 ### Added
