@@ -4,6 +4,15 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 
 ## Unreleased
 
+### Security
+
+- The `llm_judge` endpoint comes only from `EVALFORGE_JUDGE_BASE_URL`. A suite
+  could previously set `config.base_url`, and the judge sent
+  `EVALFORGE_JUDGE_API_KEY` to that URL, so a change to a committed suite could
+  send the key to any host. **Breaking:** a suite that sets `base_url` for an
+  `llm_judge` grader now fails to load, with a message pointing to
+  `EVALFORGE_JUDGE_BASE_URL`.
+
 ## 0.2.1 — 2026-11-05
 
 ### Fixed

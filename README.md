@@ -253,7 +253,7 @@ A trial passes when every grader that applies to it reaches its
 | `tool_arguments` | Specific tool calls used specific arguments | `checks`: list of `{tool, arguments}` |
 | `citation_groundedness` | Output cites known source IDs | `source_ids` (or task `metadata.source_ids`), `require_all` |
 | `no_forbidden_claims` | Output avoids known hallucinated phrases | `phrases` |
-| `llm_judge` | An OpenAI-compatible model scores the output against a rubric | `rubric`, `model`, `base_url` |
+| `llm_judge` | An OpenAI-compatible model scores the output against a rubric | `rubric`, `model` |
 | `human` | Imported human review scores | `file` |
 
 ### LLM-as-judge
@@ -269,9 +269,12 @@ A trial passes when every grader that applies to it reaches its
 ```
 
 The API key is read only from `EVALFORGE_JUDGE_API_KEY`, never from suite
-files, because suites are usually committed. `EVALFORGE_JUDGE_BASE_URL` points
-the grader at any OpenAI-compatible endpoint, including gateways and local
-inference servers. A failed judge call fails that one grade, not the run.
+files, because suites are usually committed. For the same reason the endpoint
+comes only from `EVALFORGE_JUDGE_BASE_URL`, which points the grader at any
+OpenAI-compatible endpoint, including gateways and local inference servers. A
+suite that sets `base_url` in a judge's `config` is rejected when it loads,
+since the key would be sent to whatever host it names. A failed judge call
+fails that one grade, not the run.
 
 ### Human scores
 

@@ -18,9 +18,12 @@ class OpenAICompatibleJudgeGrader(Grader):
     """
 
     async def grade(self, task: TaskSpec, output: AgentOutput, spec: GraderSpec) -> GradeResult:
-        base_url = spec.config.get("base_url", os.getenv("EVALFORGE_JUDGE_BASE_URL", "https://api.openai.com/v1"))
-        # API key is env-var-only: suite YAML files are typically committed to a repo,
-        # and spec.config is a bad place for a secret to end up.
+        # The API key and the endpoint it's sent to both come from the environment
+        # only. Suite YAML files are committed, so spec.config is no place for a
+        # secret, and a suite-chosen base_url would send the key to any host a
+        # pull request names. GraderSpec rejects config["base_url"] at suite load;
+        # it's also ignored here in case validation was bypassed.
+        base_url = os.getenv("EVALFORGE_JUDGE_BASE_URL", "https://api.openai.com/v1")
         api_key = os.getenv("EVALFORGE_JUDGE_API_KEY")
         model = spec.config.get("model", os.getenv("EVALFORGE_JUDGE_MODEL"))
         if not api_key or not model:
