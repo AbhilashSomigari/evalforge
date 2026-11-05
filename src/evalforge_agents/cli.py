@@ -4,7 +4,7 @@ import asyncio
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 from uuid import uuid4
 
 import typer
@@ -12,6 +12,7 @@ import yaml
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
+from typer.core import TyperGroup
 
 from evalforge_agents import db
 from evalforge_agents.adapters import CommandAgentAdapter, HttpAgentAdapter
@@ -30,7 +31,7 @@ def _fail(message: str) -> NoReturn:
     user/config errors, not crashes, and shouldn't print a traceback."""
     # soft_wrap: keep the message on one line so CI logs stay greppable.
     err_console.print(f"[red]Error:[/red] {message}", soft_wrap=True)
-    raise typer.Exit(code=1)
+    raise typer.Exit(code=EXIT_ERROR)
 
 
 def _load_suite(path: Path) -> SuiteSpec:
@@ -116,7 +117,45 @@ def _warn_if_suite_version_mismatch(spec: SuiteSpec, baseline: EvalRun) -> None:
         )
 
 
-app = typer.Typer(help="EvalForge — CI/CD evaluation infrastructure for AI agents")
+EXIT_GATES_FAILED = 2
+EXIT_ERROR = 1
+
+# Click's UsageError (unknown or missing options, bad values, BadParameter).
+# Recent Typer bundles its own Click and doesn't export it, so take it from
+# the public BadParameter's bases; that works with either Click.
+_UsageError: type[Exception] = next(
+    cls for cls in typer.BadParameter.__mro__ if cls.__name__ == "UsageError"
+)
+
+
+class _GateExitCodeGroup(TyperGroup):
+    """Reserve exit code 2 for failed gates.
+
+    Click exits 2 on usage errors, which made "blocked by a gate" and "the CI
+    step is misconfigured" indistinguishable. Usage errors exit 1 instead, like
+    every other input error. Only the exit code changes; the message is the
+    same.
+    """
+
+    def make_context(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return super().make_context(*args, **kwargs)
+        except _UsageError as exc:
+            exc.exit_code = EXIT_ERROR  # type: ignore[attr-defined]
+            raise
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        # Subcommands parse their options here, inside the group's invoke.
+        try:
+            return super().invoke(*args, **kwargs)
+        except _UsageError as exc:
+            exc.exit_code = EXIT_ERROR  # type: ignore[attr-defined]
+            raise
+
+
+app = typer.Typer(
+    cls=_GateExitCodeGroup, help="EvalForge — CI/CD evaluation infrastructure for AI agents"
+)
 console = Console()
 err_console = Console(stderr=True)
 
@@ -218,7 +257,7 @@ def run(
         passed_gates = all(g.passed for g in gates)
 
     if not passed_gates:
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=EXIT_GATES_FAILED)
 
 
 @app.command("ab")
