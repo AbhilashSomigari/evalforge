@@ -9,7 +9,9 @@ no PyPI API token is stored anywhere.
 ## Release a new version
 
 1. Move the `Unreleased` entries in `CHANGELOG.md` under the new version,
-   bump `version` in `pyproject.toml`, and commit both to `main`.
+   bump `version` in `pyproject.toml` and `__version__` in
+   `src/evalforge_agents/__init__.py` (a test fails if they differ), and
+   commit them to `main`.
 2. Wait for CI on `main` to pass.
 3. Push a matching tag:
 
