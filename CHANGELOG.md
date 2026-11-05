@@ -4,6 +4,8 @@ Notable changes to `evalforge-agents`. Versions follow the PyPI releases.
 
 ## Unreleased
 
+## 0.2.1 — 2026-11-05
+
 ### Fixed
 
 - `evalforge replay` no longer turns errored trials into passes. A trial whose
