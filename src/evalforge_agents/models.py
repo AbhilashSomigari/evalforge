@@ -57,6 +57,17 @@ class GraderSpec(BaseModel):
     pass_threshold: float = 1.0
     config: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def reject_judge_base_url(self) -> GraderSpec:
+        # The judge sends EVALFORGE_JUDGE_API_KEY to its endpoint, so a committed
+        # suite must not be able to choose that endpoint.
+        if self.type == "llm_judge" and "base_url" in self.config:
+            raise ValueError(
+                "llm_judge config can't set base_url: the judge API key is sent to that URL, "
+                "and suite files are committed. Set EVALFORGE_JUDGE_BASE_URL instead."
+            )
+        return self
+
 
 class TaskSpec(BaseModel):
     id: str
